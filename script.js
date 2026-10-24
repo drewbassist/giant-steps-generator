@@ -82,8 +82,22 @@ function accompanimentChords(){
  }
  return output;
 }
-let playToken=0;
-function stop(){playToken++;if(stopTimer)clearTimeout(stopTimer);for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
+let playToken=0,melodyBus=null,accompBus=null;
+function sliderLevel(id){return Math.max(0,Math.min(1,Number($(id).value)||0));}
+function updateMix(){
+ if(!ctx)return;
+ if(melodyBus)melodyBus.gain.setTargetAtTime(sliderLevel('gs-melvol')*1.25,ctx.currentTime,.015);
+ if(accompBus)accompBus.gain.setTargetAtTime(sliderLevel('gs-accvol')*1.6,ctx.currentTime,.015);
+}
+function sampleBoost(buffer){
+ let peak=0;
+ for(let c=0;c<buffer.numberOfChannels;c++){
+  const samples=buffer.getChannelData(c);
+  for(let i=0;i<samples.length;i+=32)peak=Math.max(peak,Math.abs(samples[i]));
+ }
+ return Math.min(7,Math.max(1,.65/Math.max(peak,.001)));
+}
+function stop(){playToken++;if(stopTimer)clearTimeout(stopTimer);for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;melodyBus=null;accompBus=null;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
 async function play(){
  if(playing){stop();return;}
  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();const token=++playToken;
@@ -103,7 +117,10 @@ async function play(){
   const sourceMidi=sampleSource('piano',m);
   accompanimentBuffers.set(sourceMidi,await bufferCache.get('piano-'+sourceMidi));
  }
- const start=ctx.currentTime+.12,melVol=Number($('gs-melvol').value),accVol=Number($('gs-accvol').value);
+ melodyBus=ctx.createGain();accompBus=ctx.createGain();
+ melodyBus.connect(ctx.destination);accompBus.connect(ctx.destination);
+ updateMix();
+ const start=ctx.currentTime+.12;
  const schedule=(m,t,d,sound,volume)=>{const sourceMidi=sampleSource(sound,m),buf=bufferCache.get(sound+'-'+sourceMidi);if(!buf)return;
  // All buffers are loaded: scheduling is now synchronous and sample-accurate.
  return buf.then(audio=>{if(token!==playToken)return;let src=ctx.createBufferSource(),gain=ctx.createGain();src.buffer=audio;src.playbackRate.value=2**((m-sourceMidi)/12);
@@ -114,7 +131,7 @@ async function play(){
  src.start(when);src.stop(when+duration+.01);sources.push(src);});};
  playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
  const jobs=[];for(let pass=0;pass<2;pass++){
- for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,melVol*.32));
+ for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,.5));
  for(const chord of chords){
   const slider=$('gs-accvol');
   const normalized=Math.max(0,Math.min(1,Number(slider.value)/(Number(slider.max)||1)));
@@ -128,7 +145,7 @@ async function play(){
    const src=ctx.createBufferSource(),gain=ctx.createGain();
    src.buffer=audio;
    src.playbackRate.value=2**((m-sourceMidi)/12);
-   const level=Math.max(.0001,normalized*.65);
+   const level=.28*sampleBoost(audio);
    gain.gain.setValueAtTime(.0001,when);
    gain.gain.linearRampToValueAtTime(level,when+.018);
    gain.gain.setValueAtTime(level,when+Math.max(.020,duration-.08));
@@ -144,4 +161,4 @@ function midiExport(){const ppq=480,track=[],ev=[];const add=(tick,bytes)=>ev.pu
 function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
 async function wavExport(){const bpm=Number($('tempo').value)||80,beat=60/bpm,sr=22050,length=Math.ceil((64*beat+1)*sr),offline=new OfflineAudioContext(1,length,sr);const notes=activeEvents().flat();for(let e of notes){let start=(e.bar*4+e.start)*beat,dur=e.dur*beat;let osc=offline.createOscillator(),gain=offline.createGain();osc.type='sine';osc.frequency.value=440*2**((e.m-69)/12);gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(.15*Number($('gs-melvol').value),start+.02);gain.gain.setValueAtTime(.13*Number($('gs-melvol').value),start+Math.max(.021,dur-.04));gain.gain.linearRampToValueAtTime(0,start+dur);osc.connect(gain).connect(offline.destination);osc.start(start);osc.stop(start+dur+.01)}let buf=await offline.startRendering(),f=buf.getChannelData(0),wav=new ArrayBuffer(44+f.length*2),view=new DataView(wav);const str=(off,s)=>{for(let i=0;i<s.length;i++)view.setUint8(off+i,s.charCodeAt(i))};str(0,'RIFF');view.setUint32(4,36+f.length*2,true);str(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);str(36,'data');view.setUint32(40,f.length*2,true);for(let i=0;i<f.length;i++)view.setInt16(44+i*2,Math.max(-32768,Math.min(32767,Math.round(f[i]*32767))),true);download(new Blob([wav],{type:'audio/wav'}),'giant-steps.wav');}
 function setupFavorites(){const key='giant-steps-favorites-v1';const load=()=>JSON.parse(localStorage.getItem(key)||'[]');const refresh=()=>{let select=$('fg-load');select.innerHTML='<option value="">Load Favorite…</option>';load().forEach((x,i)=>{let o=document.createElement('option');o.value=i;o.textContent=x.name;select.appendChild(o)});select.disabled=!load().length;$('fg-delete').disabled=!load().length;};$('fg-auth-status').textContent='Favorites: saved in this browser';$('fg-sign-in').hidden=true;$('fg-sign-out').hidden=true;$('fg-save').disabled=false;$('fg-save').onclick=()=>{let arr=load(),name=prompt('Favorite name','Giant Steps '+(arr.length+1));if(!name)return;arr.push({name,rhythmIds,events,originalMode});localStorage.setItem(key,JSON.stringify(arr));refresh();};$('fg-load').onchange=e=>{let x=load()[Number(e.target.value)];if(!x)return;rhythmIds=x.rhythmIds;events=x.events;originalMode=x.originalMode;render();};$('fg-delete').onclick=()=>{let idx=Number($('fg-load').value);if(!$('fg-load').value)return;let arr=load();arr.splice(idx,1);localStorage.setItem(key,JSON.stringify(arr));refresh();};refresh();}
-window.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===button));$('gs-mode').value=button.dataset.mode;generate(false);}));$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();setupFavorites();$('generate').onclick=()=>generate();$('rhythms').onclick=()=>generate(true);$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;$('stopPlayback').onclick=stop;$('gs-mode').onchange=()=>generate(false);$('gs-order').onchange=()=>generate(false);$('gs-original').onclick=()=>{stop();originalMode=!originalMode;$('gs-original').textContent=originalMode?'Return to Generated':'Original Melody';render();};$('gs-midi').onclick=midiExport;$('gs-wav').onclick=wavExport;$('gs-pdf').onclick=()=>window.print();generate();});
+window.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===button));$('gs-mode').value=button.dataset.mode;generate(false);}));$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>generate();$('rhythms').onclick=()=>generate(true);$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;$('stopPlayback').onclick=stop;$('gs-mode').onchange=()=>generate(false);$('gs-order').onchange=()=>generate(false);$('gs-original').onclick=()=>{stop();originalMode=!originalMode;$('gs-original').textContent=originalMode?'Return to Generated':'Original Melody';render();};$('gs-midi').onclick=midiExport;$('gs-wav').onclick=wavExport;$('gs-pdf').onclick=()=>window.print();generate();});
