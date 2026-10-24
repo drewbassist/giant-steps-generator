@@ -127,14 +127,12 @@ async function play(){
  let when=start+t*beat,duration=Math.max(.07,d*beat);gain.gain.setValueAtTime(.0001,when);
  gain.gain.linearRampToValueAtTime(Math.max(.0001,volume),when+.02);
  gain.gain.setValueAtTime(Math.max(.0001,volume),when+Math.max(.021,duration-.04));
- gain.gain.linearRampToValueAtTime(.0001,when+duration);src.connect(gain).connect(ctx.destination);
+ gain.gain.linearRampToValueAtTime(.0001,when+duration);src.connect(gain).connect(melodyBus);
  src.start(when);src.stop(when+duration+.01);sources.push(src);});};
  playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
  const jobs=[];for(let pass=0;pass<2;pass++){
  for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,.5));
  for(const chord of chords){
-  const slider=$('gs-accvol');
-  const normalized=Math.max(0,Math.min(1,Number(slider.value)/(Number(slider.max)||1)));
   const when=start+(pass*64+chord.start)*beat;
   const duration=Math.max(.10,chord.dur*beat);
   // Direct, fully decoded piano samples. Each voice has its own audible gain.
@@ -150,7 +148,7 @@ async function play(){
    gain.gain.linearRampToValueAtTime(level,when+.018);
    gain.gain.setValueAtTime(level,when+Math.max(.020,duration-.08));
    gain.gain.linearRampToValueAtTime(.0001,when+duration);
-   src.connect(gain).connect(ctx.destination);
+   src.connect(gain).connect(accompBus);
    src.start(when);src.stop(when+duration+.01);sources.push(src);
   }
  }
