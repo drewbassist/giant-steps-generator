@@ -149,7 +149,7 @@ let playToken=0,melodyBus=null,accompBus=null;
 function sliderLevel(id){return Math.max(0,Math.min(1,Number($(id).value)||0));}
 function updateMix(){
  if(!ctx)return;
- if(melodyBus)melodyBus.gain.setTargetAtTime(sliderLevel('gs-melvol')*0.05,ctx.currentTime,.015);
+ if(melodyBus)melodyBus.gain.setTargetAtTime(sliderLevel('gs-melvol')*0.68,ctx.currentTime,.015);
  if(accompBus)accompBus.gain.setTargetAtTime(sliderLevel('gs-accvol')*0.68,ctx.currentTime,.015);
 }
 function sampleBoost(buffer){
