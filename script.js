@@ -21,8 +21,23 @@ function originalEvents(){return D.original.map((bar,i)=>bar.map(([m,start,dur])
 function activeEvents(){return originalMode?originalEvents():events;}
 function midiName(m){return ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'][m%12]+(Math.floor(m/12)-1);}
 function abcPitch(m){const p=['C','^C','D','_E','E','F','^F','G','_A','A','_B','B'][m%12],oct=Math.floor(m/12)-1;let base=p;if(oct>=5)base=base.replace(/[A-G]/,s=>s.toLowerCase())+"'".repeat(Math.max(0,oct-5));else base+=','.repeat(Math.max(0,4-oct));return base;}
-function abcBar(bar){let ev=activeEvents()[bar],abc='',t=0;for(const e of ev){if(e.start>t+.0001)abc+=' z'+Math.round((e.start-t)*2);if(e.start===0||Math.abs(e.start-2)<.0001&&D.bars[bar].length===2)abc+='"'+e.chord.replace(/maj7/,'△7')+'"';const duration=Math.round(e.dur*2);abc+=(originalMode?' ':((e.start===0||Math.abs(e.start-2)<.0001)?' ':''))+abcPitch(e.m)+(duration===1?'':duration);t=e.start+e.dur;}if(t<4)abc+=' z'+Math.round((4-t)*2);return abc+' |';}
-function render(){let s=$('score');s.innerHTML='';for(let group=0;group<4;group++){let div=document.createElement('div');div.className='score-system';div.dataset.measures=`${group*4+1}-${group*4+4}`;div.style.cssText='width:80%;margin:0 auto 2px;';s.appendChild(div);let abc=['X:1','M:4/4','L:1/8','K:C',`%%measurefirst ${group*4+1}`,'%%barsperstaff 4',...Array.from({length:1},()=>Array.from({length:4},(_,j)=>abcBar(group*4+j)).join(' '))].join('\n');if(window.ABCJS)ABCJS.renderAbc(div,abc,{staffwidth:Math.max(520,Math.round((s.clientWidth||1100)*.8-60)),scale:1,add_classes:true,paddingleft:18,paddingright:18});else div.textContent=abc;}
+function abcBar(bar){
+ const ev=activeEvents()[bar];let abc='',t=0;
+ for(const e of ev){
+  if(e.start>t+.0001)abc+=' z'+Math.round((e.start-t)*2);
+  const chordChange=e.start===0||(Math.abs(e.start-2)<.0001&&D.bars[bar].length===2);
+  const chordLabel=chordChange?'"'+e.chord.replace(/maj7/,'△7')+'"':'';
+  const duration=Math.round(e.dur*2);
+  // Explicit beam boundaries: eighths form groups within each half-measure.
+  // Never introduce a beam break solely because the harmony changes.
+  const groupStart=originalMode||e.start===0||Math.abs(e.start-2)<.0001||e.dur>=1;
+  abc+=(groupStart?' ':'')+chordLabel+abcPitch(e.m)+(duration===1?'':duration);
+  t=e.start+e.dur;
+ }
+ if(t<4)abc+=' z'+Math.round((4-t)*2);
+ return abc+' |';
+}
+function render(){let s=$('score');s.innerHTML='';for(let group=0;group<4;group++){let div=document.createElement('div');div.className='score-system';div.dataset.measures=`${group*4+1}-${group*4+4}`;div.style.cssText='width:80%;margin:0 auto 2px;';s.appendChild(div);let abc=['X:1','M:4/4','L:1/8','K:C','%%stemheight 17',`%%measurefirst ${group*4+1}`,'%%barsperstaff 4',...Array.from({length:1},()=>Array.from({length:4},(_,j)=>abcBar(group*4+j)).join(' '))].join('\n');if(window.ABCJS)ABCJS.renderAbc(div,abc,{staffwidth:Math.max(520,Math.round((s.clientWidth||1100)*.8-60)),scale:1,add_classes:true,paddingleft:18,paddingright:18});else div.textContent=abc;}
  let out=$('output');out.replaceChildren();activeEvents().forEach((bar,i)=>{let tr=document.createElement('tr');let ch=D.bars[i].map(x=>x[0]).join(' → ');[i+1,ch,'Rhythm '+(rhythmIds[i]+1||1),([2,6,8,10,12,14].includes(i)?(rhythmIds[i]===2?'H · EEEE':'Q · EEEEEE'):'EEEE · EEEE'),D.bars[i].map(x=>D.pitch[x[0]].join(' ')).join(' / '),bar.map(e=>midiName(e.m)).join(' · ')].forEach(x=>{let td=document.createElement('td');td.textContent=x;tr.appendChild(td)});out.appendChild(tr);});}
 function setupRange(){let names=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];for(let m=40;m<=96;m++)for(let id of ['fg-low','fg-high']){let o=document.createElement('option');o.value=m;o.textContent=names[m%12]+(Math.floor(m/12)-1);$(id).appendChild(o);} $('fg-low').value=60;$('fg-high').value=79;for(let id of ['fg-low','fg-high'])$(id).onchange=()=>{if(Number($('fg-low').value)>=Number($('fg-high').value))return;generate(false)};}
 // Sample libraries have different coverage: Rhodes is sampled sparsely, piano chromatically.
