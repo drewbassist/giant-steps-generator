@@ -42,6 +42,46 @@ async function loadSample(sound,m){
  }
  return bufferCache.get(key);
 }
+// Four-part, close-position seventh-chord accompaniment with minimal voice movement.
+// This is independent of the four-note melodic pitch cells.
+function accompanimentChords(){
+ const output=[];let previous=null;
+ for(let bar=0;bar<16;bar++){
+  const changes=D.bars[bar];
+  for(let j=0;j<changes.length;j++){
+   const [name,offset]=changes[j];
+   const match=name.match(/^([A-G][b#]?)(maj7|m7|7)$/);
+   if(!match)throw Error('Unknown accompaniment chord: '+name);
+   const root=PC[match[1]],quality=match[2];
+   const intervals=quality==='maj7'?[0,4,7,11]:quality==='m7'?[0,3,7,10]:[0,4,7,10];
+   const pcs=intervals.map(v=>(root+v)%12);
+   const candidates=[];
+   // All close-position inversions, positioned between C3 and C5.
+   for(let inversion=0;inversion<4;inversion++){
+    const rotated=pcs.slice(inversion).concat(pcs.slice(0,inversion));
+    for(let bottom=48;bottom<=60;bottom++){
+     if(bottom%12!==rotated[0])continue;
+     const notes=[bottom];
+     for(let k=1;k<4;k++){
+      let n=notes[k-1]+1;
+      while(n%12!==rotated[k])n++;
+      notes.push(n);
+     }
+     if(notes[3]<=72)candidates.push(notes);
+    }
+   }
+   const cost=notes=>previous
+     ? notes.reduce((sum,n,i)=>sum+Math.abs(n-previous[i]),0)+Math.abs(notes[0]-previous[0])*.25
+     : notes.reduce((sum,n,i)=>sum+Math.abs(n-[48,52,55,59][i]),0);
+   candidates.sort((a,b)=>cost(a)-cost(b));
+   const voicing=candidates[0];
+   if(!voicing)throw Error('No accompaniment voicing for '+name);
+   output.push({m:voicing,start:bar*4+offset,dur:(j+1<changes.length?changes[j+1][1]:4)-offset});
+   previous=voicing;
+  }
+ }
+ return output;
+}
 let playToken=0;
 function stop(){playToken++;if(stopTimer)clearTimeout(stopTimer);for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
 async function play(){
@@ -49,10 +89,7 @@ async function play(){
  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();const token=++playToken;
  $('transport-status').textContent='Loading sounds…';$('playPause').disabled=true;
  const beat=60/Math.max(40,Math.min(240,Number($('tempo').value)||80));
- const melody=activeEvents().flat();const chords=[];
- for(let bar=0;bar<16;bar++){let arr=D.bars[bar];for(let j=0;j<arr.length;j++){
- let [name,t]=arr[j],root=PC[name.match(/^[A-G][b#]?/)[0]],minor=/m7/.test(name),dom=/^[A-G][b#]?7$/.test(name);
- let tones=[0,minor?3:4,7,dom||minor?10:11];chords.push({m:tones.map(v=>48+root+v),start:bar*4+t,dur:(j+1<arr.length?arr[j+1][1]:4)-t});}}
+ const melody=activeEvents().flat();const chords=accompanimentChords();
  const melSound=$('gs-melody-sound').value,accSound=$('gs-accomp-sound').value;
  // Preload ALL samples before starting the clock, so the first notes cannot be skipped.
  try{await Promise.all([...new Set(melody.map(e=>e.m))].map(m=>loadSample(melSound,m)).concat([...new Set(chords.flatMap(c=>c.m))].map(m=>loadSample(accSound,m))));}
@@ -70,7 +107,7 @@ async function play(){
  playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing';
  const jobs=[];for(let pass=0;pass<2;pass++){
  for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,melVol*.32));
- for(let c of chords)for(let m of c.m)jobs.push(schedule(m,pass*64+c.start,c.dur,accSound,accVol*.12));
+ for(let c of chords)for(let m of c.m)jobs.push(schedule(m,pass*64+c.start,c.dur,accSound,accVol*.30));
  }await Promise.all(jobs);
  if(token===playToken)stopTimer=setTimeout(stop,128*beat*1000+300);
 }
