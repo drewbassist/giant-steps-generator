@@ -465,3 +465,18 @@ h1{font-size:48px;margin-bottom:8px}
 #transport #tempo-control{display:none}
 @media(max-width:1050px){#gs-control-panel{grid-template-columns:1fr 1fr}#gs-control-panel .gs-right{grid-column:1/-1;border-left:0!important;padding-left:0!important;border-top:1px solid #ddd;padding-top:12px}}
 @media(max-width:650px){#gs-control-panel{grid-template-columns:1fr}#gs-control-panel .gs-right{grid-column:auto}#gs-control-panel .gs-col+.gs-col{border-left:0;padding-left:0;border-top:1px solid #ddd;padding-top:12px}}
+
+/* FG-style control refinements. Layout only. */
+#gs-control-panel #tempo-control{gap:12px;min-height:40px}
+#gs-control-panel #tempo{width:110px;height:auto;accent-color:#1682f9;padding:0;flex:0 0 110px}
+#gs-control-panel #tempo-value{font-size:14px;font-weight:600;color:#555;white-space:nowrap}
+#gs-control-panel .gs-style-row{flex-wrap:nowrap;gap:10px}
+#gs-control-panel .gs-style-buttons{display:flex;gap:4px;align-items:center;flex-wrap:nowrap}
+#gs-control-panel .gs-style-buttons button{padding:7px 9px;min-height:36px;font-size:12px;border:1px solid #d7d7d7;border-radius:7px;background:#fff;color:#222}
+#gs-control-panel .gs-style-buttons button.selected{background:#171717;color:#fff;border-color:#171717;box-shadow:0 0 0 2px #666}
+#gs-control-panel .gs-hat{font-size:12px;gap:6px}
+#gs-control-panel .gs-volume-row input[type=range]{accent-color:#1682f9}
+#gs-control-panel #gs-mode[hidden]{display:none!important}
+#gs-control-panel .gs-export-row{margin-top:8px}
+#gs-control-panel .gs-col{gap:17px}
+@media(max-width:1350px){#gs-control-panel .gs-style-row{flex-wrap:wrap}}
