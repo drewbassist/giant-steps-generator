@@ -95,7 +95,7 @@ async function play(){
  catch(err){ console.error('Accompaniment generation failed:',err); $('transport-status').textContent='Accompaniment error: '+err.message; return; }
  const melSound=$('gs-melody-sound').value,accSound=$('gs-accomp-sound').value;
  // Preload ALL samples before starting the clock, so the first notes cannot be skipped.
- try{await Promise.all([...new Set(melody.map(e=>e.m))].map(m=>loadSample(melSound,m)));}
+ try{await Promise.all([...[...new Set(melody.map(e=>e.m))].map(m=>loadSample(melSound,m)), ...[...new Set(chords.flatMap(c=>c.m))].map(m=>loadSample('piano',m))]);}
  catch(err){console.error(err);$('transport-status').textContent='Audio error: '+err.message;$('playPause').disabled=false;return;}
  if(token!==playToken){$('playPause').disabled=false;return;}
  const start=ctx.currentTime+.12,melVol=Number($('gs-melvol').value),accVol=Number($('gs-accvol').value);
@@ -111,28 +111,16 @@ async function play(){
  const jobs=[];for(let pass=0;pass<2;pass++){
  for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,melVol*.32));
  for(const chord of chords){
-  const when=start+(pass*64+chord.start)*beat;
-  const duration=Math.max(.12,chord.dur*beat);
-  // Accompaniment is synthesized independently from melody sample playback.
-  // One shared bus gives a consistent chord level and uses the existing slider.
-  const raw=Number($('gs-accvol').value);
+  // Accompaniment always uses Iowa Steinway piano recordings, independently
+  // of the melody sound selector. Preserve the existing smooth voicings.
   const slider=$('gs-accvol');
+  const raw=Number(slider.value);
   const max=Number(slider.max)||1;
   const normalized=Number.isFinite(raw)?Math.max(0,Math.min(1,raw/max)):0.7;
-  const bus=ctx.createGain();
-  const peak=normalized*0.34;
-  bus.gain.setValueAtTime(0,when);
-  bus.gain.linearRampToValueAtTime(peak,when+.025);
-  bus.gain.setValueAtTime(peak,when+Math.max(.03,duration-.10));
-  bus.gain.linearRampToValueAtTime(0,when+duration);
-  bus.connect(ctx.destination);
+  // Four samples sum together, so use a per-voice gain below the melody gain.
+  const voiceLevel=normalized*0.19;
   for(const m of chord.m){
-   const osc=ctx.createOscillator();
-   osc.type='triangle';
-   osc.frequency.setValueAtTime(440*Math.pow(2,(m-69)/12),when);
-   osc.connect(bus);
-   osc.start(when);osc.stop(when+duration+.01);
-   sources.push(osc);
+   jobs.push(schedule(m,pass*64+chord.start,chord.dur,'piano',voiceLevel));
   }
  }
  }await Promise.all(jobs);
