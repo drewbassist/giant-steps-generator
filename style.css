@@ -480,3 +480,19 @@ h1{font-size:48px;margin-bottom:8px}
 #gs-control-panel .gs-export-row{margin-top:8px}
 #gs-control-panel .gs-col{gap:17px}
 @media(max-width:1350px){#gs-control-panel .gs-style-row{flex-wrap:wrap}}
+
+/* Giant Steps: isolated single-page lead-sheet PDF. Screen remains unchanged. */
+.gs-print-heading{display:none}
+@media print {
+ @page{size:landscape;margin:9mm 11mm}
+ html,body{width:100%!important;height:auto!important;margin:0!important;padding:0!important;background:#fff!important}
+ body{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .page{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+ .page>*:not(#score-section){display:none!important}
+ #score-section{display:block!important;position:static!important;width:100%!important;max-width:none!important;overflow:visible!important;margin:0!important;padding:0!important;background:#fff!important}
+ .gs-print-heading{display:block!important;text-align:center;font:700 17pt Arial,Helvetica,sans-serif;margin:0 0 5mm!important;line-height:1.15}
+ #score{display:flex!important;flex-direction:column!important;justify-content:space-between!important;width:100%!important;height:156mm!important;max-width:none!important;min-width:0!important;overflow:visible!important}
+ #score .score-system{display:block!important;flex:0 0 auto!important;width:100%!important;max-width:100%!important;min-width:0!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;break-inside:avoid!important;page-break-inside:avoid!important}
+ #score .score-system svg{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:35mm!important;margin:0!important;overflow:visible!important}
+ #score .score-system svg text{font-size:inherit}
+}
