@@ -13,7 +13,7 @@ function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:c
 function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null;for(let bar=0;bar<16;bar++){
  let durations=([2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={};
  for(const d of durations){let end=time+d;while(time<end-1e-6){let chord=chordAt(bar,time),segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end, names=seqs[chord]||(seqs[chord]=patternNames(chord)),n=idx[chord]||0,name=names[n%4];idx[chord]=n+1;
- let mode=$('gs-mode').value, m=nearest(name,prev,mode);if(mode==='triadic'||mode==='quartal'){const candidates=noteCandidates(name);const goal=mode==='quartal'?5:4;candidates.sort((a,b)=>Math.abs(Math.abs(a-(prev??a))-goal)-Math.abs(Math.abs(b-(prev??b))-goal));m=candidates[0];}
+ let mode=$('gs-mode').value, m=nearest(name,prev,mode);if(mode==='triadic'||mode==='quartal'){const candidates=noteCandidates(name);if(mode==='quartal'&&prev!=null){const rank=n=>{const d=Math.abs(n-prev);return d===5?0:d===6?1:2+Math.abs(d-5)+(d===3||d===4?10:0);};candidates.sort((a,b)=>rank(a)-rank(b)||Math.abs(a-prev)-Math.abs(b-prev));}else{const goal=mode==='quartal'?5:4;candidates.sort((a,b)=>Math.abs(Math.abs(a-(prev??a))-goal)-Math.abs(Math.abs(b-(prev??b))-goal));}m=candidates[0];}
  barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});prev=m;time=segmentEnd;
  }}events.push(barEvents);
  }render();}
