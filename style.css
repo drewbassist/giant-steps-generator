@@ -496,3 +496,13 @@ h1{font-size:48px;margin-bottom:8px}
  #score .score-system svg{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:35mm!important;margin:0!important;overflow:visible!important}
  #score .score-system svg text{font-size:inherit}
 }
+
+/* Giant Steps range select: prevent clipped pitch labels. Screen only. */
+@media screen {
+ #gs-control-panel #fg-range select {
+  height:40px !important;min-height:40px !important;
+  line-height:normal !important;padding:6px 25px 6px 10px !important;
+  width:86px !important;box-sizing:border-box !important;
+  font-size:14px !important;vertical-align:middle !important;
+ }
+}

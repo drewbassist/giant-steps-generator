@@ -145,6 +145,22 @@ async function play(){
  gain.gain.linearRampToValueAtTime(.0001,when+duration);src.connect(gain).connect(melodyBus);
  src.start(when);src.stop(when+duration+.01);sources.push(src);});};
  playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
+ // Closed hi-hat on beats 2 and 4, using short filtered noise bursts.
+ if($('gs-hat')?.checked){
+  const length=Math.max(256,Math.round(ctx.sampleRate*.065));
+  const noise=ctx.createBuffer(1,length,ctx.sampleRate),data=noise.getChannelData(0);
+  for(let i=0;i<length;i++)data[i]=Math.random()*2-1;
+  for(let pass=0;pass<2;pass++)for(let bar=0;bar<16;bar++)for(const b of [1,3]){
+   const when=start+(pass*64+bar*4+b)*beat;
+   const src=ctx.createBufferSource(),hp=ctx.createBiquadFilter(),gain=ctx.createGain();
+   src.buffer=noise;hp.type='highpass';hp.frequency.value=6500;
+   gain.gain.setValueAtTime(.0001,when);
+   gain.gain.linearRampToValueAtTime(.17,when+.003);
+   gain.gain.exponentialRampToValueAtTime(.0001,when+.055);
+   src.connect(hp).connect(gain).connect(ctx.destination);
+   src.start(when);src.stop(when+.065);sources.push(src);
+  }
+ }
  const jobs=[];for(let pass=0;pass<2;pass++){
  for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,.5));
  for(const chord of chords){
