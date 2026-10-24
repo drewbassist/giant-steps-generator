@@ -98,6 +98,11 @@ async function play(){
  try{await Promise.all([...[...new Set(melody.map(e=>e.m))].map(m=>loadSample(melSound,m)), ...[...new Set(chords.flatMap(c=>c.m))].map(m=>loadSample('piano',m))]);}
  catch(err){console.error(err);$('transport-status').textContent='Audio error: '+err.message;$('playPause').disabled=false;return;}
  if(token!==playToken){$('playPause').disabled=false;return;}
+ const accompanimentBuffers=new Map();
+ for(const m of new Set(chords.flatMap(c=>c.m))){
+  const sourceMidi=sampleSource('piano',m);
+  accompanimentBuffers.set(sourceMidi,await bufferCache.get('piano-'+sourceMidi));
+ }
  const start=ctx.currentTime+.12,melVol=Number($('gs-melvol').value),accVol=Number($('gs-accvol').value);
  const schedule=(m,t,d,sound,volume)=>{const sourceMidi=sampleSource(sound,m),buf=bufferCache.get(sound+'-'+sourceMidi);if(!buf)return;
  // All buffers are loaded: scheduling is now synchronous and sample-accurate.
@@ -111,16 +116,25 @@ async function play(){
  const jobs=[];for(let pass=0;pass<2;pass++){
  for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,melVol*.32));
  for(const chord of chords){
-  // Accompaniment always uses Iowa Steinway piano recordings, independently
-  // of the melody sound selector. Preserve the existing smooth voicings.
   const slider=$('gs-accvol');
-  const raw=Number(slider.value);
-  const max=Number(slider.max)||1;
-  const normalized=Number.isFinite(raw)?Math.max(0,Math.min(1,raw/max)):0.7;
-  // Four samples sum together, so use a per-voice gain below the melody gain.
-  const voiceLevel=normalized*0.19;
+  const normalized=Math.max(0,Math.min(1,Number(slider.value)/(Number(slider.max)||1)));
+  const when=start+(pass*64+chord.start)*beat;
+  const duration=Math.max(.10,chord.dur*beat);
+  // Direct, fully decoded piano samples. Each voice has its own audible gain.
   for(const m of chord.m){
-   jobs.push(schedule(m,pass*64+chord.start,chord.dur,'piano',voiceLevel));
+   const sourceMidi=sampleSource('piano',m);
+   const audio=accompanimentBuffers.get(sourceMidi);
+   if(!audio){console.error('Missing piano buffer for',m);continue;}
+   const src=ctx.createBufferSource(),gain=ctx.createGain();
+   src.buffer=audio;
+   src.playbackRate.value=2**((m-sourceMidi)/12);
+   const level=Math.max(.0001,normalized*.65);
+   gain.gain.setValueAtTime(.0001,when);
+   gain.gain.linearRampToValueAtTime(level,when+.018);
+   gain.gain.setValueAtTime(level,when+Math.max(.020,duration-.08));
+   gain.gain.linearRampToValueAtTime(.0001,when+duration);
+   src.connect(gain).connect(ctx.destination);
+   src.start(when);src.stop(when+duration+.01);sources.push(src);
   }
  }
  }await Promise.all(jobs);
