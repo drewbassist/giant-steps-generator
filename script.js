@@ -92,7 +92,7 @@ async function play(){
  const melody=activeEvents().flat();const chords=accompanimentChords();
  const melSound=$('gs-melody-sound').value,accSound=$('gs-accomp-sound').value;
  // Preload ALL samples before starting the clock, so the first notes cannot be skipped.
- try{await Promise.all([...new Set(melody.map(e=>e.m))].map(m=>loadSample(melSound,m)).concat([...new Set(chords.flatMap(c=>c.m))].map(m=>loadSample(accSound,m))));}
+ try{await Promise.all([...new Set(melody.map(e=>e.m))].map(m=>loadSample(melSound,m)));}
  catch(err){console.error(err);$('transport-status').textContent='Audio error: '+err.message;$('playPause').disabled=false;return;}
  if(token!==playToken){$('playPause').disabled=false;return;}
  const start=ctx.currentTime+.12,melVol=Number($('gs-melvol').value),accVol=Number($('gs-accvol').value);
@@ -107,7 +107,22 @@ async function play(){
  playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing';
  const jobs=[];for(let pass=0;pass<2;pass++){
  for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,melVol*.32));
- for(let c of chords)for(let m of c.m)jobs.push(schedule(m,pass*64+c.start,c.dur,accSound,accVol*.30));
+ for(let c of chords)for(let m of c.m){
+  // Independent chord oscillator guarantees accompaniment even if sample routing fails.
+  const when=start+(pass*64+c.start)*beat;
+  const duration=Math.max(.08,c.dur*beat);
+  const osc=ctx.createOscillator(),gain=ctx.createGain();
+  osc.type='triangle';
+  osc.frequency.value=440*Math.pow(2,(m-69)/12);
+  const level=Math.max(.0001,accVol*.105);
+  gain.gain.setValueAtTime(.0001,when);
+  gain.gain.linearRampToValueAtTime(level,when+.025);
+  gain.gain.setValueAtTime(level,when+Math.max(.026,duration-.09));
+  gain.gain.linearRampToValueAtTime(.0001,when+duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(when);osc.stop(when+duration+.01);
+  sources.push(osc);
+ }
  }await Promise.all(jobs);
  if(token===playToken)stopTimer=setTimeout(stop,128*beat*1000+300);
 }
