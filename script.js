@@ -51,7 +51,7 @@ function render(){
   const div=document.createElement('div');
   div.className='score-system';
   div.dataset.measures=`${group*4+1}-${group*4+4}`;
-  div.style.cssText='width:100%;max-width:1100px;height:122px;margin:0 auto 2px;overflow:hidden;position:relative;';
+  div.style.cssText='width:100%;max-width:1300px;margin:0 auto 2px;overflow:visible;position:relative;';
   s.appendChild(div);
   const abc=['X:1','M:4/4','L:1/8','K:C','%%stemheight 17',
    `%%measurefirst ${group*4+1}`,'%%barnumbers 0','%%stretchlast 1',
@@ -59,7 +59,7 @@ function render(){
   if(window.ABCJS){
    // A wide engraving canvas prevents ABCJS from wrapping measure 4 to a second staff.
    // The finished SVG is then scaled to the available score width.
-   ABCJS.renderAbc(div,abc,{staffwidth:1800,scale:1,stretchlast:true,
+   ABCJS.renderAbc(div,abc,{staffwidth:1180,scale:1,stretchlast:true,
     add_classes:true,paddingleft:18,paddingright:18});
   }else div.textContent=abc;
   const svg=div.querySelector('svg');
@@ -77,7 +77,7 @@ function render(){
    svg.setAttribute('viewBox',`${x} ${y} ${vw} ${vh}`);
    svg.setAttribute('width','100%');
    svg.removeAttribute('height');
-   svg.style.cssText='display:block;width:100%;height:122px;';
+   svg.style.cssText='display:block;width:100%;height:auto;';
    svg.setAttribute('preserveAspectRatio','xMidYMin meet');
   }
   const number=document.createElement('span');
@@ -149,7 +149,7 @@ let playToken=0,melodyBus=null,accompBus=null;
 function sliderLevel(id){return Math.max(0,Math.min(1,Number($(id).value)||0));}
 function updateMix(){
  if(!ctx)return;
- if(melodyBus)melodyBus.gain.setTargetAtTime(sliderLevel('gs-melvol')*0.68,ctx.currentTime,.015);
+ if(melodyBus)melodyBus.gain.setTargetAtTime(sliderLevel('gs-melvol')*0.05,ctx.currentTime,.015);
  if(accompBus)accompBus.gain.setTargetAtTime(sliderLevel('gs-accvol')*0.68,ctx.currentTime,.015);
 }
 function sampleBoost(buffer){
