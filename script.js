@@ -89,7 +89,10 @@ async function play(){
  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();const token=++playToken;
  $('transport-status').textContent='Loading sounds…';$('playPause').disabled=true;
  const beat=60/Math.max(40,Math.min(240,Number($('tempo').value)||80));
- const melody=activeEvents().flat();const chords=accompanimentChords();
+ const melody=activeEvents().flat();
+ let chords;
+ try { chords=accompanimentChords(); if(!chords.length)throw Error('No accompaniment chords generated'); }
+ catch(err){ console.error('Accompaniment generation failed:',err); $('transport-status').textContent='Accompaniment error: '+err.message; return; }
  const melSound=$('gs-melody-sound').value,accSound=$('gs-accomp-sound').value;
  // Preload ALL samples before starting the clock, so the first notes cannot be skipped.
  try{await Promise.all([...new Set(melody.map(e=>e.m))].map(m=>loadSample(melSound,m)));}
@@ -104,24 +107,33 @@ async function play(){
  gain.gain.setValueAtTime(Math.max(.0001,volume),when+Math.max(.021,duration-.04));
  gain.gain.linearRampToValueAtTime(.0001,when+duration);src.connect(gain).connect(ctx.destination);
  src.start(when);src.stop(when+duration+.01);sources.push(src);});};
- playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing';
+ playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
  const jobs=[];for(let pass=0;pass<2;pass++){
  for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,melVol*.32));
- for(let c of chords)for(let m of c.m){
-  // Independent chord oscillator guarantees accompaniment even if sample routing fails.
-  const when=start+(pass*64+c.start)*beat;
-  const duration=Math.max(.08,c.dur*beat);
-  const osc=ctx.createOscillator(),gain=ctx.createGain();
-  osc.type='triangle';
-  osc.frequency.value=440*Math.pow(2,(m-69)/12);
-  const level=Math.max(.0001,accVol*.105);
-  gain.gain.setValueAtTime(.0001,when);
-  gain.gain.linearRampToValueAtTime(level,when+.025);
-  gain.gain.setValueAtTime(level,when+Math.max(.026,duration-.09));
-  gain.gain.linearRampToValueAtTime(.0001,when+duration);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(when);osc.stop(when+duration+.01);
-  sources.push(osc);
+ for(const chord of chords){
+  const when=start+(pass*64+chord.start)*beat;
+  const duration=Math.max(.12,chord.dur*beat);
+  // Accompaniment is synthesized independently from melody sample playback.
+  // One shared bus gives a consistent chord level and uses the existing slider.
+  const raw=Number($('gs-accvol').value);
+  const slider=$('gs-accvol');
+  const max=Number(slider.max)||1;
+  const normalized=Number.isFinite(raw)?Math.max(0,Math.min(1,raw/max)):0.7;
+  const bus=ctx.createGain();
+  const peak=normalized*0.34;
+  bus.gain.setValueAtTime(0,when);
+  bus.gain.linearRampToValueAtTime(peak,when+.025);
+  bus.gain.setValueAtTime(peak,when+Math.max(.03,duration-.10));
+  bus.gain.linearRampToValueAtTime(0,when+duration);
+  bus.connect(ctx.destination);
+  for(const m of chord.m){
+   const osc=ctx.createOscillator();
+   osc.type='triangle';
+   osc.frequency.setValueAtTime(440*Math.pow(2,(m-69)/12),when);
+   osc.connect(bus);
+   osc.start(when);osc.stop(when+duration+.01);
+   sources.push(osc);
+  }
  }
  }await Promise.all(jobs);
  if(token===playToken)stopTimer=setTimeout(stop,128*beat*1000+300);
