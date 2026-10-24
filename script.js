@@ -31,13 +31,25 @@ function abcBar(bar){
   // Explicit beam boundaries: eighths form groups within each half-measure.
   // Never introduce a beam break solely because the harmony changes.
   const groupStart=originalMode||e.start===0||Math.abs(e.start-2)<.0001||e.dur>=1;
-  abc+=(groupStart?' ':'')+chordLabel+abcPitch(e.m)+(duration===1?'':duration);
+  let tieIn=false,tieOut=false;
+  if(originalMode){
+   const prev=ev[ev.indexOf(e)-1];
+   // The score ties the last eighth into the next measure in bars 2 and 6,
+   // and the eighth into the following half note in bar 4.
+   tieIn=(bar===3&&e.start===2&&prev&&prev.m===e.m);
+   tieOut=(bar===3&&e.start===1.5&&ev[ev.indexOf(e)+1]?.m===e.m);
+   if((bar===1||bar===5)&&Math.abs(e.start+e.dur-4)<.001){
+    const next=D.original[bar+1]?.[0];
+    tieOut=!!next&&next[0]===e.m;
+   }
+  }
+  abc+=(groupStart?' ':'')+chordLabel+abcPitch(e.m)+(duration===1?'':duration)+(tieOut?'-':'');
   t=e.start+e.dur;
  }
  if(t<4)abc+=' z'+Math.round((4-t)*2);
  return abc+' |';
 }
-function render(){let s=$('score');s.innerHTML='';for(let group=0;group<4;group++){let div=document.createElement('div');div.className='score-system';div.dataset.measures=`${group*4+1}-${group*4+4}`;div.style.cssText='width:80%;margin:0 auto 2px;';s.appendChild(div);let abc=['X:1','M:4/4','L:1/8','K:C','%%stemheight 17',`%%measurefirst ${group*4+1}`,'%%barsperstaff 4',...Array.from({length:1},()=>Array.from({length:4},(_,j)=>abcBar(group*4+j)).join(' '))].join('\n');if(window.ABCJS)ABCJS.renderAbc(div,abc,{staffwidth:Math.max(520,Math.round((s.clientWidth||1100)*.8-60)),scale:1,add_classes:true,paddingleft:18,paddingright:18});else div.textContent=abc;}
+function render(){let s=$('score');s.innerHTML='';for(let group=0;group<4;group++){let div=document.createElement('div');div.className='score-system';div.dataset.measures=`${group*4+1}-${group*4+4}`;div.style.cssText='width:95%;margin:0 auto 2px;';s.appendChild(div);let abc=['X:1','M:4/4','L:1/8','K:C','%%stemheight 17',`%%measurefirst ${group*4+1}`,'%%barsperstaff 4','%%stretchlast 1',...Array.from({length:1},()=>Array.from({length:4},(_,j)=>abcBar(group*4+j)).join(' '))].join('\n');if(window.ABCJS)ABCJS.renderAbc(div,abc,{staffwidth:Math.max(520,Math.round((s.clientWidth||1100)*.95-60)),scale:1,stretchlast:1,add_classes:true,paddingleft:18,paddingright:18});else div.textContent=abc;}
  let out=$('output');out.replaceChildren();activeEvents().forEach((bar,i)=>{let tr=document.createElement('tr');let ch=D.bars[i].map(x=>x[0]).join(' → ');[i+1,ch,'Rhythm '+(rhythmIds[i]+1||1),([2,6,8,10,12,14].includes(i)?(rhythmIds[i]===2?'H · EEEE':'Q · EEEEEE'):'EEEE · EEEE'),D.bars[i].map(x=>D.pitch[x[0]].join(' ')).join(' / '),bar.map(e=>midiName(e.m)).join(' · ')].forEach(x=>{let td=document.createElement('td');td.textContent=x;tr.appendChild(td)});out.appendChild(tr);});}
 function setupRange(){let names=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];for(let m=40;m<=96;m++)for(let id of ['fg-low','fg-high']){let o=document.createElement('option');o.value=m;o.textContent=names[m%12]+(Math.floor(m/12)-1);$(id).appendChild(o);} $('fg-low').value=60;$('fg-high').value=79;for(let id of ['fg-low','fg-high'])$(id).onchange=()=>{if(Number($('fg-low').value)>=Number($('fg-high').value))return;generate(false)};}
 // Sample libraries have different coverage: Rhodes is sampled sparsely, piano chromatically.
