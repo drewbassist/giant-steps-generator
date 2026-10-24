@@ -29,7 +29,7 @@ function abcBar(bar){
   const chordLabel=chordChange?'"'+e.chord.replace(/maj7/,'△7')+'"':'';
   const duration=Math.round(e.dur*2);
   // Original lead-sheet spelling: G-sharp in measures 6-7, not A-flat.
-  const spelledPitch=(originalMode&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&[3,9].includes(bar)&&e.start===0&&e.m===71?'=B':abcPitch(e.m));
+  const spelledPitch=(e.chord==='Bmaj7'&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&[3,9].includes(bar)&&e.start===0&&e.m===71?'=B':abcPitch(e.m));
   // Explicit beam boundaries: eighths form groups within each half-measure.
   // Never introduce a beam break solely because the harmony changes.
   const groupStart=originalMode||e.start===0||Math.abs(e.start-2)<.0001||e.dur>=1;
