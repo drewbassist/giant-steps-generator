@@ -51,7 +51,7 @@ function render(){
   const div=document.createElement('div');
   div.className='score-system';
   div.dataset.measures=`${group*4+1}-${group*4+4}`;
-  div.style.cssText='width:100%;max-width:1100px;margin:0 auto 10px;overflow:hidden;position:relative;';
+  div.style.cssText='width:100%;max-width:1100px;height:122px;margin:0 auto 2px;overflow:hidden;position:relative;';
   s.appendChild(div);
   const abc=['X:1','M:4/4','L:1/8','K:C','%%stemheight 17',
    `%%measurefirst ${group*4+1}`,'%%barnumbers 0','%%stretchlast 1',
@@ -77,7 +77,7 @@ function render(){
    svg.setAttribute('viewBox',`${x} ${y} ${vw} ${vh}`);
    svg.setAttribute('width','100%');
    svg.removeAttribute('height');
-   svg.style.cssText='display:block;width:100%;height:auto;';
+   svg.style.cssText='display:block;width:100%;height:122px;';
    svg.setAttribute('preserveAspectRatio','xMidYMin meet');
   }
   const number=document.createElement('span');
