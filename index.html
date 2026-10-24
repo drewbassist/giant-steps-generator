@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giant Steps</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="page">
+  <header class="header">
+    <div class="header-copy">
+      <div class="eyebrow">GENERATOR PROTOTYPE</div>
+      <h1>Giant Steps</h1>
+      <p>four-note cells and 24 rhythmic permutations</p>
+    </div>
+    <div class="actions">
+      <button id="generate" class="primary" type="button">Generate</button>
+      <button id="rhythms" type="button">Randomize Rhythms</button>
+      <button id="pentas" type="button">Shuffle Pitch Cells</button>
+    </div>
+  </header>
+
+  <div class="rule"></div>
+  <div class="subhead">16 bars · exact four-note chord cells · four bars per system</div>
+
+  <section id="transport" aria-label="Playback controls">
+    <div id="transport-controls">
+      <button id="playPause" class="primary-control" type="button">▶ Play</button>
+      <button id="stopPlayback" type="button">■ Stop</button>
+      <span id="transport-status">Ready</span>
+    </div>
+    <div id="tempo-control">
+      <label for="tempo">Tempo</label>
+      <input id="tempo" type="number" min="40" max="240" step="1" value="80" inputmode="numeric">
+      
+    </div>
+  </section>
+
+
+  <div class="gs-options"><label>Melodic mode <select id="gs-mode"><option value="angular">Angular</option><option value="smooth">Smooth</option><option value="triadic">Triadic</option><option value="quartal">Quartal</option></select></label> <label>Four-note ordering <select id="gs-order"><option value="random">Random</option><option value="straight">1–2–3–5</option><option value="retro">5–3–2–1</option><option value="inverted">1–3–2–5</option><option value="river">5–1–2–3</option><option value="enclosure">2–1–3–5</option></select></label> <label>Melody <select id="gs-melody-sound"><option value="rhodes">Rhodes</option><option value="piano">Piano</option></select></label> <label>Accompaniment <select id="gs-accomp-sound"><option value="piano">Piano</option><option value="rhodes">Rhodes</option></select></label> <label>Melody volume <input id="gs-melvol" type="range" min="0" max="1" step=".01" value=".7"></label> <label>Accomp volume <input id="gs-accvol" type="range" min="0" max="1" step=".01" value=".45"></label> <label><input type="checkbox" id="gs-hat"> Hi-hat 2 &amp; 4</label> <button id="gs-original">Original Melody</button> <button id="gs-midi">Download MIDI</button> <button id="gs-wav">Download WAV</button> <button id="gs-pdf">Print / Save PDF</button></div>
+  <div id="fg-range" aria-label="Melody note range"><strong>Range:</strong><label for="fg-low">Low</label><select id="fg-low"></select><label for="fg-high">High</label><select id="fg-high"></select></div>
+
+  <section id="fg-favorites" aria-label="Saved favorite charts">
+    <span id="fg-auth-status">Favorites: not signed in</span>
+    <button id="fg-sign-in" type="button">Sign In</button>
+    <button id="fg-sign-out" type="button" hidden>Sign Out</button>
+    <button id="fg-save" type="button" disabled>♡ Save Favorite</button>
+    <select id="fg-load" aria-label="Load favorite" disabled><option value="">Load Favorite…</option></select>
+    <button id="fg-delete" type="button" disabled>Delete</button>
+    <span id="fg-favorites-message" role="status"></span>
+  </section>
+
+  <section id="score-section" aria-label="Generated notation">
+    <div id="score"></div>
+  </section>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Measure</th>
+        <th>Chord</th>
+        <th>Rhythm</th>
+        <th>Transcription</th>
+        <th>Pitch cell</th>
+        <th>Generated attacks</th>
+      </tr>
+    </thead>
+    <tbody id="output"></tbody>
+  </table>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="favorites-config.js"></script>
+<script src="giant-steps-data.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
