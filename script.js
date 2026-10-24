@@ -25,12 +25,22 @@ function abcBar(bar){let ev=activeEvents()[bar],abc='',t=0;for(const e of ev){if
 function render(){let s=$('score');s.innerHTML='';for(let group=0;group<4;group++){let div=document.createElement('div');div.className='score-system';div.dataset.measures=`${group*4+1}-${group*4+4}`;div.style.cssText='width:80%;margin:0 auto 2px;';s.appendChild(div);let abc=['X:1','M:4/4','L:1/8','K:C',`%%measurefirst ${group*4+1}`,'%%barsperstaff 4',...Array.from({length:1},()=>Array.from({length:4},(_,j)=>abcBar(group*4+j)).join(' '))].join('\n');if(window.ABCJS)ABCJS.renderAbc(div,abc,{staffwidth:Math.max(520,Math.round((s.clientWidth||1100)*.8-60)),scale:1,add_classes:true,paddingleft:18,paddingright:18});else div.textContent=abc;}
  let out=$('output');out.replaceChildren();activeEvents().forEach((bar,i)=>{let tr=document.createElement('tr');let ch=D.bars[i].map(x=>x[0]).join(' → ');[i+1,ch,'Rhythm '+(rhythmIds[i]+1||1),D.rhythms[rhythmIds[i]||0],D.bars[i].map(x=>D.pitch[x[0]].join(' ')).join(' / '),bar.map(e=>midiName(e.m)).join(' · ')].forEach(x=>{let td=document.createElement('td');td.textContent=x;tr.appendChild(td)});out.appendChild(tr);});}
 function setupRange(){let names=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];for(let m=40;m<=96;m++)for(let id of ['fg-low','fg-high']){let o=document.createElement('option');o.value=m;o.textContent=names[m%12]+(Math.floor(m/12)-1);$(id).appendChild(o);} $('fg-low').value=60;$('fg-high').value=79;for(let id of ['fg-low','fg-high'])$(id).onchange=()=>{if(Number($('fg-low').value)>=Number($('fg-high').value))return;generate(false)};}
-function samplePath(sound,m){let name=midiName(m).replace('Db','Db').replace('Gb','Gb');let folder=sound==='rhodes'?'warm-rhodes':'iowa-steinway';return 'assets/instruments/'+folder+'/'+(sound==='rhodes'?m:name)+'.mp3';}
+// Sample libraries have different coverage: Rhodes is sampled sparsely, piano chromatically.
+// Select the nearest existing recording and transpose it to the requested MIDI pitch.
+const RHODES_SAMPLES=[45,50,55,59,62,65,71,76,81,86];
+const PIANO_SAMPLES=new Set(['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B']);
+function sampleSource(sound,m){
+ if(sound==='rhodes')return RHODES_SAMPLES.reduce((best,n)=>Math.abs(n-m)<Math.abs(best-m)?n:best,RHODES_SAMPLES[0]);
+ return Math.min(83,Math.max(48,m)); // piano recordings cover C3 through B5
+}
+function samplePath(sound,source){return sound==='rhodes'?'assets/instruments/warm-rhodes/'+source+'.mp3':'assets/instruments/iowa-steinway/'+midiName(source)+'.mp3';}
 async function loadSample(sound,m){
- const key=sound+'-'+m;if(bufferCache.has(key))return bufferCache.get(key);
- const promise=(async()=>{let oct=Math.floor(m/12)-1,clamped=Math.min(5,Math.max(3,oct)),source=m+(clamped-oct)*12;
- let res=await fetch(samplePath(sound,source));if(!res.ok)throw Error('Sample unavailable: '+res.url);
- return ctx.decodeAudioData(await res.arrayBuffer());})();bufferCache.set(key,promise);return promise;
+ const source=sampleSource(sound,m),key=sound+'-'+source;
+ if(!bufferCache.has(key)){
+  const promise=(async()=>{const res=await fetch(samplePath(sound,source));if(!res.ok)throw Error('Sample unavailable: '+res.url);return ctx.decodeAudioData(await res.arrayBuffer());})();
+  bufferCache.set(key,promise);
+ }
+ return bufferCache.get(key);
 }
 let playToken=0;
 function stop(){playToken++;if(stopTimer)clearTimeout(stopTimer);for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
@@ -49,9 +59,9 @@ async function play(){
  catch(err){console.error(err);$('transport-status').textContent='Audio error: '+err.message;$('playPause').disabled=false;return;}
  if(token!==playToken){$('playPause').disabled=false;return;}
  const start=ctx.currentTime+.12,melVol=Number($('gs-melvol').value),accVol=Number($('gs-accvol').value);
- const schedule=(m,t,d,sound,volume)=>{const buf=bufferCache.get(sound+'-'+m);if(!buf)return;
+ const schedule=(m,t,d,sound,volume)=>{const sourceMidi=sampleSource(sound,m),buf=bufferCache.get(sound+'-'+sourceMidi);if(!buf)return;
  // All buffers are loaded: scheduling is now synchronous and sample-accurate.
- return buf.then(audio=>{if(token!==playToken)return;let src=ctx.createBufferSource(),gain=ctx.createGain();src.buffer=audio;
+ return buf.then(audio=>{if(token!==playToken)return;let src=ctx.createBufferSource(),gain=ctx.createGain();src.buffer=audio;src.playbackRate.value=2**((m-sourceMidi)/12);
  let when=start+t*beat,duration=Math.max(.07,d*beat);gain.gain.setValueAtTime(.0001,when);
  gain.gain.linearRampToValueAtTime(Math.max(.0001,volume),when+.02);
  gain.gain.setValueAtTime(Math.max(.0001,volume),when+Math.max(.021,duration-.04));
