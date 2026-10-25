@@ -28,6 +28,7 @@
 <span id="fg-auth-status">Favorites: not signed in</span>
 <button id="fg-sign-in" type="button">Sign In</button>
 <button hidden="" id="fg-sign-out" type="button">Sign Out</button>
+<button id="gs-about-open" type="button" aria-haspopup="dialog" aria-controls="gs-about-dialog">About</button>
 <button disabled="" id="fg-save" type="button">♡ Save Favorite</button>
 <select aria-label="Load favorite" disabled="" id="fg-load"><option value="">Load Favorite…</option></select>
 <button disabled="" id="fg-delete" type="button">Delete</button>
@@ -66,5 +67,59 @@
 <script src="favorites-config.js"></script>
 <script src="giant-steps-data.js"></script>
 <script src="script.js"></script>
+
+<div id="gs-about-dialog" class="gs-about-overlay" role="dialog" aria-modal="true" aria-labelledby="gs-about-title" hidden>
+  <div class="gs-about-panel" tabindex="-1">
+    <button id="gs-about-close" class="gs-about-close" type="button" aria-label="Close About">×</button>
+    <h2 id="gs-about-title">The Giant Steps Generator</h2>
+    <h3>Four-Note Pitch Cells and Rhythmic Permutations</h3>
+    <p>The Giant Steps Generator, based on John Coltrane's composition <em>Giant Steps</em>, is an interactive jazz improvisation tool that generates melodic variations over Coltrane's rapidly changing harmonic progression using four-note pitch cells.</p>
+    <p>Rather than relying on pentatonic scales, the application uses a specific four-note formula:</p>
+    <p><strong>1 – 2 – 3 – 5</strong></p>
+    <p>Each chord is assigned four pitches derived from its root and chord quality. These pitches form the exclusive melodic vocabulary available over that harmony.</p>
+    <p>For example, Bmaj7 produces:</p>
+    <p><strong>B – C♯ – D♯ – F♯</strong></p>
+    <p>The generator offers five ways of organizing these four pitches:</p>
+    <table class="gs-about-table"><thead><tr><th>Melodic Pattern</th><th>Scale-Degree Order</th></tr></thead><tbody>
+      <tr><td>Straight</td><td>1 – 2 – 3 – 5</td></tr>
+      <tr><td>Retrograde</td><td>5 – 3 – 2 – 1</td></tr>
+      <tr><td>Inverted Pair</td><td>1 – 3 – 2 – 5</td></tr>
+      <tr><td>Cry Me a River</td><td>5 – 1 – 2 – 3</td></tr>
+      <tr><td>Enclosure</td><td>2 – 1 – 3 – 5</td></tr>
+    </tbody></table>
+    <p>These patterns reorganize the same four pitches rather than introducing additional notes.</p>
+    <p>Coltrane's harmonic framework, built around major tonal centers separated by major thirds, presents a particular challenge for melodic continuity. The generator explores how restricted four-note collections can navigate these rapid harmonic movements while maintaining coherent melodic lines.</p>
+    <p>The application follows the original 16-measure harmonic progression, including measures containing two chords. Each chord change introduces its corresponding four-note collection.</p>
+    <p>Rhythmic variation provides an additional dimension of melodic development. The generator combines prescribed rhythmic structures with the selected pitch-cell orderings, producing new melodic exercises while maintaining harmonic and rhythmic constraints.</p>
+    <p>Four melodic modes, <strong>Angular, Smooth, Triadic, and Quartal</strong>, offer different approaches to organizing the selected pitches across registers and melodic intervals.</p>
+    <p>The result is <strong>controlled musical randomness</strong>, producing a virtually unlimited variety of melodic exercises within clearly defined harmonic, rhythmic, and intervallic boundaries.</p>
+    <p>The application is not intended to replace the combination of pencil, manuscript paper, and your ears traditionally associated with developing improvisational vocabulary. Rather, it offers a complementary way to hear the musical possibilities created by these constraints, develop fluency with four-note melodic cells under your fingers, navigate Coltrane's challenging harmonic movement, and strengthen your sight-reading skills through continually changing melodic material.</p>
+  </div>
+</div>
+<script>
+(() => {
+  const open = document.getElementById('gs-about-open');
+  const dialog = document.getElementById('gs-about-dialog');
+  const panel = dialog.querySelector('.gs-about-panel');
+  const close = document.getElementById('gs-about-close');
+  let previousFocus;
+  function show() { previousFocus = document.activeElement; dialog.hidden = false; document.body.classList.add('gs-about-visible'); close.focus(); }
+  function hide() { dialog.hidden = true; document.body.classList.remove('gs-about-visible'); (previousFocus || open).focus(); }
+  open.addEventListener('click', show);
+  close.addEventListener('click', hide);
+  dialog.addEventListener('click', e => { if (e.target === dialog) hide(); });
+  document.addEventListener('keydown', e => {
+    if (dialog.hidden) return;
+    if (e.key === 'Escape') { e.preventDefault(); hide(); }
+    if (e.key === 'Tab') {
+      const focusables = [...panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(el => !el.disabled);
+      if (!focusables.length) { e.preventDefault(); panel.focus(); return; }
+      const first = focusables[0], last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+})();
+</script>
 </body>
 </html>

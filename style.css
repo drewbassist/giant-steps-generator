@@ -506,3 +506,20 @@ h1{font-size:48px;margin-bottom:8px}
   font-size:14px !important;vertical-align:middle !important;
  }
 }
+
+
+/* Giant Steps About dialog */
+#gs-control-panel #fg-favorites #gs-about-open{order:-1}
+.gs-about-overlay[hidden]{display:none!important}
+.gs-about-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.62);display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box}
+.gs-about-panel{position:relative;background:#fff;color:#202020;width:min(760px,100%);max-height:min(86vh,900px);overflow-y:auto;border-radius:12px;padding:32px 36px;box-shadow:0 20px 70px rgba(0,0,0,.28);font:15px/1.65 Arial,sans-serif;box-sizing:border-box}
+.gs-about-panel h2{font-size:26px;margin:0 38px 2px 0;line-height:1.2}
+.gs-about-panel h3{font-size:15px;font-weight:500;color:#555;margin:0 38px 24px 0}
+.gs-about-panel p{margin:0 0 17px}
+.gs-about-close{position:absolute;top:13px;right:16px;font-size:27px;line-height:1;border:0;background:transparent;color:#333;cursor:pointer;padding:4px 8px}
+.gs-about-table{display:table!important;width:100%;border-collapse:collapse;margin:10px 0 22px;font-size:14px}
+.gs-about-table th,.gs-about-table td{padding:9px 12px;border-bottom:1px solid #ddd;text-align:left}
+.gs-about-table th{background:#f4f4f4}
+body.gs-about-visible{overflow:hidden}
+@media(max-width:600px){.gs-about-panel{padding:26px 19px;max-height:90vh}.gs-about-panel h2{font-size:22px}}
+@media print{.gs-about-overlay{display:none!important}}
