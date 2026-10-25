@@ -533,3 +533,8 @@ body.gs-about-visible{overflow:hidden}
 #gs-control-panel #fg-favorites .gs-favorite-grid > select{text-align:left}
 #gs-control-panel .gs-right .gs-export-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;margin-top:12px}
 #gs-control-panel .gs-right .gs-export-row > button{width:100%;min-width:0;padding:8px 4px;box-sizing:border-box}
+
+/* About on its own row; favorites in three equal columns. */
+#gs-control-panel #fg-favorites > #gs-about-open{width:100%;box-sizing:border-box;align-self:stretch}
+#gs-control-panel #fg-favorites .gs-favorite-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+#gs-control-panel #fg-favorites .gs-favorite-grid > select{padding-left:4px;padding-right:4px}
