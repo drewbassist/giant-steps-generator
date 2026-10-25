@@ -246,18 +246,20 @@ function startGSScoreFollower(startTime, beat, token){
             const width=Math.max(100,ending-opening);
             boundaries=Array.from({length:5},(_,i)=>opening+width*i/4);
         }
+        // Use the five actual engraved staff rules, not a group bounding box
+        // that can extend down to low notes and ledger lines.
         let staffBottom=null;
-        for(const line of svg.querySelectorAll('.abcjs-staff')){
+        for(const path of svg.querySelectorAll('path')){
             try{
-                const bb=line.getBBox(),p=svg.createSVGPoint();
+                const bb=path.getBBox();
+                if(bb.width<viewBox.width*.45 || bb.height>55)continue;
+                const matrix=path.getCTM(),p=svg.createSVGPoint();
                 p.x=bb.x;p.y=bb.y+bb.height;
-                const matrix=line.getCTM();
                 const y=matrix?p.matrixTransform(matrix).y:p.y;
                 const px=svgRect.top-systemRect.top+(y-viewBox.y)*sy;
                 staffBottom=staffBottom===null?px:Math.max(staffBottom,px);
             }catch{}
         }
-        // Use the actual staff when available, otherwise position within SVG.
         if(staffBottom===null)staffBottom=svgRect.top-systemRect.top+svgRect.height*.72;
         const marker=document.createElement('div');
         marker.className='gs-measure-marker';
