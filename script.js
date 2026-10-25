@@ -183,8 +183,6 @@ function clearGSScoreFollower(){
 
 function startGSScoreFollower(startTime, beat, token){
     clearGSScoreFollower();
-    // Each Giant Steps system is rendered as its own ABCJS SVG (four bars).
-    // Unlike Falling Grace, ABCJS measure classes here need not restart at m0.
     const systems=[...document.querySelectorAll('#score .score-system')];
     const markers=[];
     if(!document.getElementById('gs-measure-marker-style')){
@@ -194,98 +192,92 @@ function startGSScoreFollower(startTime, beat, token){
         document.head.appendChild(style);
     }
     for(let group=0;group<4;group++){
-        const system=systems[group];
-        const svg=system?.querySelector('svg');
+        const system=systems[group],svg=system?.querySelector('svg');
         if(!svg)continue;
         const systemRect=system.getBoundingClientRect();
-        const svgRect=svg.getBoundingClientRect();
-        const viewBox=svg.viewBox.baseVal;
-        const sx=svgRect.width/(viewBox.width||svgRect.width);
-        const sy=svgRect.height/(viewBox.height||svgRect.height);
-        const coord=node=>{
+        // Use the actual SVG screen transform, which includes ABCJS viewBox
+        // cropping and responsive scaling. Do not estimate from barline widths.
+        const point=(node,x,y)=>{
+            const matrix=node.getScreenCTM();
+            if(!matrix)return null;
+            const p=svg.createSVGPoint();p.x=x;p.y=y;
+            return p.matrixTransform(matrix);
+        };
+        const xOf=node=>{
             try{
-                const bb=node.getBBox(),matrix=node.getCTM();
-                const p=svg.createSVGPoint();p.x=bb.x+bb.width/2;p.y=bb.y;
-                const x=matrix?p.matrixTransform(matrix).x:p.x;
-                return svgRect.left-systemRect.left+(x-viewBox.x)*sx;
+                const box=node.getBBox();
+                const pt=point(node,box.x+box.width/2,box.y+box.height/2);
+                return pt?pt.x-systemRect.left:null;
             }catch{return null;}
         };
-        // Find the first engraved note/rest for each measure. Use BOTH local
-        // and absolute ABCJS measure class numbering; fall back to barlines.
-        const starts=[];
-        for(let m=0;m<4;m++){
-            const indices=[m,group*4+m,group*4+m+1];
-            let candidates=[];
-            for(const idx of indices){
-                const selector=`.abcjs-m${idx}.abcjs-note, .abcjs-m${idx} .abcjs-note, .abcjs-m${idx}.abcjs-rest, .abcjs-m${idx} .abcjs-rest`;
-                const nodes=[...svg.querySelectorAll(selector)];
-                if(nodes.length){candidates=nodes;break;}
+        // ABCJS annotates each note with abcjs-mN. Collect the actual first
+        // notehead of EVERY measure, including measure four, instead of
+        // deriving starts from the last four barlines (which can include
+        // repeat signs and shift or omit the final measure).
+        const byMeasure=new Map();
+        for(const note of svg.querySelectorAll('.abcjs-note')){
+            let node=note,measure=null;
+            while(node&&node!==svg){
+                const match=(node.getAttribute('class')||'').match(/(?:^|\s)abcjs-m(\d+)(?=\s|$)/);
+                if(match){measure=Number(match[1]);break;}
+                node=node.parentElement;
             }
-            const xs=candidates.map(coord).filter(x=>Number.isFinite(x));
-            starts.push(xs.length?Math.min(...xs):null);
+            if(measure===null)continue;
+            const x=xOf(note);
+            if(Number.isFinite(x))byMeasure.set(measure,Math.min(byMeasure.get(measure)??Infinity,x));
         }
-        const bars=[...svg.querySelectorAll('.abcjs-bar')].map(coord)
-            .filter(x=>Number.isFinite(x)).sort((a,b)=>a-b)
-            .filter((x,i,arr)=>i===0||x-arr[i-1]>2);
-        // Map the four measures to the actual engraved boundaries. This
-        // fallback is independent of abcjs-m classes and never drops a bar.
-        const firstSymbol=starts.find(x=>x!==null);
-        const opening=firstSymbol!==undefined?Math.max(0,firstSymbol-12):Math.max(0,svgRect.left-systemRect.left+20);
-        const ending=bars.length?bars[bars.length-1]:svgRect.right-systemRect.left-10;
-        let boundaries=[];
-        if(bars.length>=4){
-            const endings=bars.slice(-4);
-            boundaries=[opening,...endings];
-        }else{
-            const width=Math.max(100,ending-opening);
-            boundaries=Array.from({length:5},(_,i)=>opening+width*i/4);
+        const keys=[...byMeasure.keys()].sort((a,b)=>a-b);
+        // Each SVG contains exactly four measures. ABCJS may number the
+        // measures locally or globally, so normalize by sorted distinct IDs.
+        let starts=keys.map(k=>byMeasure.get(k));
+        if(starts.length!==4){
+            // Fallback: identify note groups by their horizontal position
+            // relative to actual barlines, not by dividing the staff evenly.
+            const lines=[...svg.querySelectorAll('.abcjs-bar')].map(xOf)
+                .filter(Number.isFinite).sort((a,b)=>a-b)
+                .filter((x,i,arr)=>i===0||x-arr[i-1]>3);
+            const noteXs=[...svg.querySelectorAll('.abcjs-note')].map(xOf).filter(Number.isFinite).sort((a,b)=>a-b);
+            if(lines.length>=3&&noteXs.length){
+                const internal=lines.filter(x=>x>noteXs[0]+3&&x<noteXs[noteXs.length-1]-3);
+                if(internal.length>=3){
+                    const splits=internal.slice(0,3);
+                    starts=[noteXs[0],...splits.map(x=>noteXs.find(n=>n>x+2))];
+                }
+            }
         }
-        // If the detected barline sequence is not increasing, use measured
-        // SVG width rather than placing the arrow off-screen.
-        if(boundaries.some((x,i)=>i&&x<=boundaries[i-1])){
-            const width=Math.max(100,ending-opening);
-            boundaries=Array.from({length:5},(_,i)=>opening+width*i/4);
+        if(starts.length!==4||starts.some(x=>!Number.isFinite(x))){
+            console.warn('GS follower: cannot locate four engraved measures in system',group+1);
+            continue;
         }
-        // Use the five actual engraved staff rules, not a group bounding box
-        // that can extend down to low notes and ledger lines.
-        // Anchor the triangle to the bottom of the actual engraved barlines.
-        // A barline spans the five staff lines; noteheads and beams do not.
-        // This avoids unreliable staff/path bounding boxes that left the
-        // marker in the middle of the staff.
-        const staffBarlines=[...svg.querySelectorAll('.abcjs-bar')];
-        let staffBottom=null;
-        for(const line of staffBarlines){
+        // Measure the five horizontal staff rules. The bottom rule is
+        // independent of low notes, stems, beams, and repeat barlines.
+        const staffYs=[];
+        for(const node of svg.querySelectorAll('.abcjs-staff')){
             try{
-                const bb=line.getBBox(),matrix=line.getCTM();
-                if(bb.height<12)continue; // ignore decorative short marks
-                const p=svg.createSVGPoint();p.x=bb.x;p.y=bb.y+bb.height;
-                const y=matrix?p.matrixTransform(matrix).y:p.y;
-                const px=svgRect.top-systemRect.top+(y-viewBox.y)*sy;
-                // Barline endings may be taller (repeat dots), so take
-                // the lowest of the normal-height barlines when possible.
-                if(Number.isFinite(px))staffBottom=staffBottom===null?px:Math.max(staffBottom,px);
+                const box=node.getBBox();
+                if(box.width<100)continue;
+                const pt=point(node,box.x,box.y+box.height/2);
+                if(pt)staffYs.push(pt.y-systemRect.top);
             }catch{}
         }
-        if(staffBottom===null){
-            // SVG geometry fallback: the bottom staff line is typically
-            // near the lower edge of the clef's bounding box.
-            const clef=svg.querySelector('.abcjs-clef');
-            if(clef){try{
-                const bb=clef.getBBox(),matrix=clef.getCTM();
-                const p=svg.createSVGPoint();p.x=bb.x;p.y=bb.y+bb.height;
-                const y=matrix?p.matrixTransform(matrix).y:p.y;
-                staffBottom=svgRect.top-systemRect.top+(y-viewBox.y)*sy-4;
-            }catch{}}
+        // ABCJS staff paths can be grouped into one five-line path.
+        if(!staffYs.length){
+            for(const node of svg.querySelectorAll('.abcjs-bar')){
+                try{
+                    const box=node.getBBox();
+                    if(box.height<15)continue;
+                    const pt=point(node,box.x,box.y+box.height);
+                    if(pt)staffYs.push(pt.y-systemRect.top);
+                }catch{}
+            }
         }
-        if(staffBottom===null)staffBottom=svgRect.top-systemRect.top+svgRect.height*.72;
+        const staffBottom=staffYs.length?Math.max(...staffYs):svg.getBoundingClientRect().bottom-systemRect.top-12;
         const marker=document.createElement('div');
         marker.className='gs-measure-marker';
         marker.setAttribute('aria-hidden','true');
-        // Keep the blue triangle visibly below the five-line staff.
-        // The earlier +5 offset left it on the staff in Chrome.
-        marker.style.top=(staffBottom+27)+'px';
+        marker.style.top=(staffBottom+10)+'px';
         system.appendChild(marker);
-        markers.push({marker,boundaries,group});
+        markers.push({marker,starts,group});
     }
     if(!markers.length)return;
     const update=()=>{
@@ -296,7 +288,7 @@ function startGSScoreFollower(startTime, beat, token){
         for(const item of markers){
             const visible=item.group===group;
             item.marker.style.display=visible?'block':'none';
-            if(visible)item.marker.style.left=item.boundaries[within]+'px';
+            if(visible)item.marker.style.left=item.starts[within]+'px';
         }
         window.gsFollowerFrame=requestAnimationFrame(update);
     };
