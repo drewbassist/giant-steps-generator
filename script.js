@@ -244,7 +244,7 @@ async function play(){
    src.playbackRate.value=2**((m-sourceMidi)/12);
    const level=.28*sampleBoost(audio);
    gain.gain.setValueAtTime(.0001,when);
-   gain.gain.linearRampToValueAtTime(level,when+.018);
+   gain.gain.linearRampToValueAtTime(level,when+.025);
    gain.gain.setValueAtTime(level,when+Math.max(.020,duration-.08));
    gain.gain.linearRampToValueAtTime(.0001,when+duration);
    src.connect(gain).connect(accompBus);
