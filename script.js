@@ -275,7 +275,7 @@ function startGSScoreFollower(startTime, beat, token){
         const marker=document.createElement('div');
         marker.className='gs-measure-marker';
         marker.setAttribute('aria-hidden','true');
-        marker.style.top=(staffBottom+10)+'px';
+        marker.style.top=(staffBottom+14)+'px';
         system.appendChild(marker);
         markers.push({marker,starts,group});
     }
@@ -288,7 +288,7 @@ function startGSScoreFollower(startTime, beat, token){
         for(const item of markers){
             const visible=item.group===group;
             item.marker.style.display=visible?'block':'none';
-            if(visible)item.marker.style.left=item.starts[within]+'px';
+            if(visible)item.marker.style.left=(item.starts[within]-4)+'px';
         }
         window.gsFollowerFrame=requestAnimationFrame(update);
     };
