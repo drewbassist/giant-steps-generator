@@ -174,6 +174,145 @@ function accompanimentChords(){
  }
  return output;
 }
+// Falling Grace score-follower geometry, adapted to Giant Steps 16 bars.
+function clearGSScoreFollower(){
+    if(window.gsFollowerFrame) cancelAnimationFrame(window.gsFollowerFrame);
+    window.gsFollowerFrame=0;
+    document.querySelectorAll(".gs-measure-marker").forEach(el=>el.remove());
+}
+
+function startGSScoreFollower(startTime, beat, token){
+    clearGSScoreFollower();
+    const positions=[];
+    // Same triangle geometry and color as Falling Grace, scoped to Giant Steps.
+    if(!document.getElementById('gs-measure-marker-style')){
+        const style=document.createElement('style');
+        style.id='gs-measure-marker-style';
+        style.textContent='.gs-measure-marker{position:absolute;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:6px solid #2563eb;transform:translateX(-50%);pointer-events:none;z-index:5;}';
+        document.head.appendChild(style);
+    }
+    const systems=[...document.querySelectorAll("#score .score-system")];
+    for(let group=0;group<Math.min(4,systems.length);group++){
+        const system=systems[group];
+        const svg=system.querySelector("svg");
+        if(!svg) continue;
+        const systemRect=system.getBoundingClientRect();
+        const svgRect=svg.getBoundingClientRect();
+        const viewBox=svg.viewBox.baseVal;
+        const scaleX=svgRect.width/(viewBox.width||svgRect.width);
+        const svgToX=x=>svgRect.left-systemRect.left+(x-viewBox.x)*scaleX;
+        const elementX=node=>{
+            try{
+                const bb=node.getBBox();
+                const pt=svg.createSVGPoint();
+                pt.x=bb.x+bb.width/2;pt.y=bb.y;
+                const matrix=node.getCTM();
+                return svgToX(matrix?pt.matrixTransform(matrix).x:pt.x);
+            }catch(e){return null;}
+        };
+        // Read existing engraving coordinates; do not change or re-render notation.
+        // abcjs may put measure and note classes on the SAME SVG element.
+        // The old descendant-only selector returned no notes, hiding the marker.
+        const firstNotes=[0,1,2,3].map(m=>{
+            const candidates=[...system.querySelectorAll(`.abcjs-m${m}.abcjs-note, .abcjs-m${m} .abcjs-note`)];
+            const xs=candidates.map(elementX).filter(x=>x!==null);
+            return xs.length?Math.min(...xs):null;
+        });
+        // Empty improvisation measures contain rests, not noteheads.
+        // Include those rests when finding the measure's engraved start.
+        const firstSymbols=[0,1,2,3].map(m=>{
+            const nodes=[...system.querySelectorAll(`.abcjs-m${m}.abcjs-note, .abcjs-m${m} .abcjs-note, .abcjs-m${m}.abcjs-rest, .abcjs-m${m} .abcjs-rest`)];
+            const xs=nodes.map(elementX).filter(x=>x!==null);
+            return xs.length?Math.min(...xs):null;
+        });
+        const barlines=[...system.querySelectorAll(".abcjs-bar")]
+            .map(elementX).filter(x=>x!==null).sort((a,b)=>a-b)
+            .filter((x,i,arr)=>i===0||x-arr[i-1]>2);
+        // Anchor the triangle to the bottom STAFF LINE, not to a note or
+        // the overall staff group's bounding box (which can include ledger lines).
+        let staffBottom=null;
+        const staffLines=[...svg.querySelectorAll(".abcjs-staff")];
+        const scaleY=svgRect.height/(viewBox.height||svgRect.height);
+        for(const line of staffLines){
+            try{
+                const bb=line.getBBox();
+                const pt=svg.createSVGPoint();
+                pt.x=bb.x;pt.y=bb.y+bb.height;
+                const matrix=line.getCTM();
+                const svgY=matrix?pt.matrixTransform(matrix).y:pt.y;
+                const y=svgRect.top-systemRect.top+(svgY-viewBox.y)*scaleY;
+                if(staffBottom===null||y>staffBottom) staffBottom=y;
+            }catch(e){}
+        }
+        // Quarter-note grid: four equal beat positions per bar, irrespective
+        // of note attacks, rests, ties, or the melody's rhythmic subdivision.
+        for(let m=0;m<4;m++){
+            const barIndex=group*4+m;
+            // Prefer the actual note position, with engraved barline fallback
+            // for system-opening measures and measures without noteheads.
+            const noteStart=firstNotes[m];
+            const symbolStart=firstSymbols[m];
+            // Mark the measure boundary, not the first notehead. ABCJS
+            // leaves space after each barline before engraving the note.
+            // For a system-opening measure there is no preceding barline:
+            // place the marker just before its first note instead.
+            const precedingBarline=m===0||symbolStart===null?null:
+                [...barlines].reverse().find(x=>x<symbolStart-2);
+            // Improvisation bars (6 and 21) have no noteheads. Locate their
+            // start from the engraved barlines instead of skipping the bar.
+            // For a system-opening empty bar (21), estimate the opening
+            // boundary from the adjacent engraved bar width.
+            const emptyBarStart=m===0
+                ? (barlines.length>=2 ? barlines[0]-(barlines[1]-barlines[0])
+                   : (barlines[0]!==undefined ? barlines[0]-80 : null))
+                : (barlines[m-1]??null);
+            // Do not drop a timed measure simply because it contains no notes.
+            // Use the engraved rest as the anchor when available.
+            const left=precedingBarline ?? (symbolStart!==null?symbolStart-12:emptyBarStart);
+            if(left===null) continue;
+            const nextFirst=m<3?firstNotes[m+1]:null;
+            const rightBoundary=barlines.find(x=>x>left+2)??null;
+            const right=rightBoundary??(nextFirst!==null?nextFirst-8:null);
+            // A measure marker needs only the starting x coordinate;
+            // never discard it because its ending barline is ambiguous.
+            const width=right!==null&&right>left?right-left:0;
+            for(let q=0;q<4;q++){
+                positions.push({time:(barIndex*4+q)*beat,system,
+                    x:left+width*q/4,barX:left,barIndex,staffBottom});
+            }
+        }
+    }
+    if(!positions.length) return;
+    const measureMarkers=new Map();
+    const update=()=>{
+        if(!playing || token!==playToken){clearGSScoreFollower();return;}
+        const elapsed=Math.max(0,ctx.currentTime-startTime) % (16*4*beat);
+        let active=null;
+        for(const p of positions){if(p.time<=elapsed+0.015) active=p;else break;}
+        measureMarkers.forEach((marker,system)=>{marker.style.display=active&&system===active.system?"block":"none";});
+        if(active){
+            let marker=measureMarkers.get(active.system);
+            if(!marker){
+                marker=document.createElement("div");
+                marker.className="gs-measure-marker";
+                marker.setAttribute("aria-hidden","true");
+                active.system.appendChild(marker);
+                measureMarkers.set(active.system,marker);
+            }
+            // A stationary indicator at beat one, held until the next measure.
+            marker.style.left=active.barX+"px";
+            if(active.staffBottom!==null){
+                // Triangle tip sits at the bottom staff line, consistently
+                // above low notes and their ledger lines.
+                marker.style.top=(active.staffBottom+1)+"px";
+            }
+            marker.style.display="block";
+        }
+        window.gsFollowerFrame=requestAnimationFrame(update);
+    };
+    update();
+}
+
 let playToken=0,melodyBus=null,accompBus=null;
 function sliderLevel(id){return Math.max(0,Math.min(1,Number($(id).value)||0));}
 function updateMix(){
@@ -189,7 +328,7 @@ function sampleBoost(buffer){
  }
  return Math.min(7,Math.max(1,.65/Math.max(peak,.001)));
 }
-function stop(){playToken++;if(stopTimer)clearTimeout(stopTimer);for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;melodyBus=null;accompBus=null;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
+function stop(){clearGSScoreFollower();playToken++;if(stopTimer)clearTimeout(stopTimer);for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;melodyBus=null;accompBus=null;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
 async function play(){
  if(playing){stop();return;}
  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();const token=++playToken;
@@ -221,7 +360,7 @@ async function play(){
  gain.gain.setValueAtTime(Math.max(.0001,volume),when+Math.max(.021,duration-.04));
  gain.gain.linearRampToValueAtTime(.0001,when+duration);src.connect(gain).connect(melodyBus);
  src.start(when);src.stop(when+duration+.01);sources.push(src);});};
- playing=true;$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
+ playing=true;startGSScoreFollower(start,beat,token);$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
  // Closed hi-hat on beats 2 and 4, using short filtered noise bursts.
  if($('gs-hat')?.checked){
   const length=Math.max(256,Math.round(ctx.sampleRate*.065));
