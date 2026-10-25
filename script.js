@@ -120,7 +120,16 @@ function samplePath(sound,source){return sound==='rhodes'?'assets/instruments/wa
 async function loadSample(sound,m){
  const source=sampleSource(sound,m),key=sound+'-'+source;
  if(!bufferCache.has(key)){
-  const promise=(async()=>{const res=await fetch(samplePath(sound,source));if(!res.ok)throw Error('Sample unavailable: '+res.url);return ctx.decodeAudioData(await res.arrayBuffer());})();
+  const promise=(async()=>{const res=await fetch(samplePath(sound,source));if(!res.ok)throw Error('Sample unavailable: '+res.url);const audio=await ctx.decodeAudioData(await res.arrayBuffer());
+    // Remove sample-start transients from piano comping only; Rhodes is untouched.
+    if(sound==='piano'){
+     const fadeSamples=Math.min(Math.round(audio.sampleRate*.008),audio.length);
+     for(let channel=0;channel<audio.numberOfChannels;channel++){
+      const data=audio.getChannelData(channel);
+      for(let i=0;i<fadeSamples;i++)data[i]*=i/Math.max(1,fadeSamples-1);
+     }
+    }
+    return audio;})();
   bufferCache.set(key,promise);
  }
  return bufferCache.get(key);
