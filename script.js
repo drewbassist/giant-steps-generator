@@ -183,130 +183,99 @@ function clearGSScoreFollower(){
 
 function startGSScoreFollower(startTime, beat, token){
     clearGSScoreFollower();
-    const positions=[];
-    // Same triangle geometry and color as Falling Grace, scoped to Giant Steps.
+    // Each Giant Steps system is rendered as its own ABCJS SVG (four bars).
+    // Unlike Falling Grace, ABCJS measure classes here need not restart at m0.
+    const systems=[...document.querySelectorAll('#score .score-system')];
+    const markers=[];
     if(!document.getElementById('gs-measure-marker-style')){
         const style=document.createElement('style');
         style.id='gs-measure-marker-style';
-        style.textContent='.gs-measure-marker{position:absolute;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:6px solid #2563eb;transform:translateX(-50%);pointer-events:none;z-index:5;}';
+        style.textContent='.gs-measure-marker{position:absolute;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:6px solid #2563eb;transform:translateX(-50%);pointer-events:none;z-index:50;display:none;}';
         document.head.appendChild(style);
     }
-    const systems=[...document.querySelectorAll("#score .score-system")];
-    for(let group=0;group<Math.min(4,systems.length);group++){
+    for(let group=0;group<4;group++){
         const system=systems[group];
-        const svg=system.querySelector("svg");
-        if(!svg) continue;
+        const svg=system?.querySelector('svg');
+        if(!svg)continue;
         const systemRect=system.getBoundingClientRect();
         const svgRect=svg.getBoundingClientRect();
         const viewBox=svg.viewBox.baseVal;
-        const scaleX=svgRect.width/(viewBox.width||svgRect.width);
-        const svgToX=x=>svgRect.left-systemRect.left+(x-viewBox.x)*scaleX;
-        const elementX=node=>{
+        const sx=svgRect.width/(viewBox.width||svgRect.width);
+        const sy=svgRect.height/(viewBox.height||svgRect.height);
+        const coord=node=>{
             try{
-                const bb=node.getBBox();
-                const pt=svg.createSVGPoint();
-                pt.x=bb.x+bb.width/2;pt.y=bb.y;
-                const matrix=node.getCTM();
-                return svgToX(matrix?pt.matrixTransform(matrix).x:pt.x);
-            }catch(e){return null;}
+                const bb=node.getBBox(),matrix=node.getCTM();
+                const p=svg.createSVGPoint();p.x=bb.x+bb.width/2;p.y=bb.y;
+                const x=matrix?p.matrixTransform(matrix).x:p.x;
+                return svgRect.left-systemRect.left+(x-viewBox.x)*sx;
+            }catch{return null;}
         };
-        // Read existing engraving coordinates; do not change or re-render notation.
-        // abcjs may put measure and note classes on the SAME SVG element.
-        // The old descendant-only selector returned no notes, hiding the marker.
-        const firstNotes=[0,1,2,3].map(m=>{
-            const candidates=[...system.querySelectorAll(`.abcjs-m${m}.abcjs-note, .abcjs-m${m} .abcjs-note`)];
-            const xs=candidates.map(elementX).filter(x=>x!==null);
-            return xs.length?Math.min(...xs):null;
-        });
-        // Empty improvisation measures contain rests, not noteheads.
-        // Include those rests when finding the measure's engraved start.
-        const firstSymbols=[0,1,2,3].map(m=>{
-            const nodes=[...system.querySelectorAll(`.abcjs-m${m}.abcjs-note, .abcjs-m${m} .abcjs-note, .abcjs-m${m}.abcjs-rest, .abcjs-m${m} .abcjs-rest`)];
-            const xs=nodes.map(elementX).filter(x=>x!==null);
-            return xs.length?Math.min(...xs):null;
-        });
-        const barlines=[...system.querySelectorAll(".abcjs-bar")]
-            .map(elementX).filter(x=>x!==null).sort((a,b)=>a-b)
-            .filter((x,i,arr)=>i===0||x-arr[i-1]>2);
-        // Anchor the triangle to the bottom STAFF LINE, not to a note or
-        // the overall staff group's bounding box (which can include ledger lines).
-        let staffBottom=null;
-        const staffLines=[...svg.querySelectorAll(".abcjs-staff")];
-        const scaleY=svgRect.height/(viewBox.height||svgRect.height);
-        for(const line of staffLines){
-            try{
-                const bb=line.getBBox();
-                const pt=svg.createSVGPoint();
-                pt.x=bb.x;pt.y=bb.y+bb.height;
-                const matrix=line.getCTM();
-                const svgY=matrix?pt.matrixTransform(matrix).y:pt.y;
-                const y=svgRect.top-systemRect.top+(svgY-viewBox.y)*scaleY;
-                if(staffBottom===null||y>staffBottom) staffBottom=y;
-            }catch(e){}
-        }
-        // Quarter-note grid: four equal beat positions per bar, irrespective
-        // of note attacks, rests, ties, or the melody's rhythmic subdivision.
+        // Find the first engraved note/rest for each measure. Use BOTH local
+        // and absolute ABCJS measure class numbering; fall back to barlines.
+        const starts=[];
         for(let m=0;m<4;m++){
-            const barIndex=group*4+m;
-            // Prefer the actual note position, with engraved barline fallback
-            // for system-opening measures and measures without noteheads.
-            const noteStart=firstNotes[m];
-            const symbolStart=firstSymbols[m];
-            // Mark the measure boundary, not the first notehead. ABCJS
-            // leaves space after each barline before engraving the note.
-            // For a system-opening measure there is no preceding barline:
-            // place the marker just before its first note instead.
-            const precedingBarline=m===0||symbolStart===null?null:
-                [...barlines].reverse().find(x=>x<symbolStart-2);
-            // Improvisation bars (6 and 21) have no noteheads. Locate their
-            // start from the engraved barlines instead of skipping the bar.
-            // For a system-opening empty bar (21), estimate the opening
-            // boundary from the adjacent engraved bar width.
-            const emptyBarStart=m===0
-                ? (barlines.length>=2 ? barlines[0]-(barlines[1]-barlines[0])
-                   : (barlines[0]!==undefined ? barlines[0]-80 : null))
-                : (barlines[m-1]??null);
-            // Do not drop a timed measure simply because it contains no notes.
-            // Use the engraved rest as the anchor when available.
-            const left=precedingBarline ?? (symbolStart!==null?symbolStart-12:emptyBarStart);
-            if(left===null) continue;
-            const nextFirst=m<3?firstNotes[m+1]:null;
-            const rightBoundary=barlines.find(x=>x>left+2)??null;
-            const right=rightBoundary??(nextFirst!==null?nextFirst-8:null);
-            // A measure marker needs only the starting x coordinate;
-            // never discard it because its ending barline is ambiguous.
-            const width=right!==null&&right>left?right-left:0;
-            for(let q=0;q<4;q++){
-                positions.push({time:(barIndex*4+q)*beat,system,
-                    x:left+width*q/4,barX:left,barIndex,staffBottom});
+            const indices=[m,group*4+m,group*4+m+1];
+            let candidates=[];
+            for(const idx of indices){
+                const selector=`.abcjs-m${idx}.abcjs-note, .abcjs-m${idx} .abcjs-note, .abcjs-m${idx}.abcjs-rest, .abcjs-m${idx} .abcjs-rest`;
+                const nodes=[...svg.querySelectorAll(selector)];
+                if(nodes.length){candidates=nodes;break;}
             }
+            const xs=candidates.map(coord).filter(x=>Number.isFinite(x));
+            starts.push(xs.length?Math.min(...xs):null);
         }
+        const bars=[...svg.querySelectorAll('.abcjs-bar')].map(coord)
+            .filter(x=>Number.isFinite(x)).sort((a,b)=>a-b)
+            .filter((x,i,arr)=>i===0||x-arr[i-1]>2);
+        // Map the four measures to the actual engraved boundaries. This
+        // fallback is independent of abcjs-m classes and never drops a bar.
+        const firstSymbol=starts.find(x=>x!==null);
+        const opening=firstSymbol!==undefined?Math.max(0,firstSymbol-12):Math.max(0,svgRect.left-systemRect.left+20);
+        const ending=bars.length?bars[bars.length-1]:svgRect.right-systemRect.left-10;
+        let boundaries=[];
+        if(bars.length>=4){
+            const endings=bars.slice(-4);
+            boundaries=[opening,...endings];
+        }else{
+            const width=Math.max(100,ending-opening);
+            boundaries=Array.from({length:5},(_,i)=>opening+width*i/4);
+        }
+        // If the detected barline sequence is not increasing, use measured
+        // SVG width rather than placing the arrow off-screen.
+        if(boundaries.some((x,i)=>i&&x<=boundaries[i-1])){
+            const width=Math.max(100,ending-opening);
+            boundaries=Array.from({length:5},(_,i)=>opening+width*i/4);
+        }
+        let staffBottom=null;
+        for(const line of svg.querySelectorAll('.abcjs-staff')){
+            try{
+                const bb=line.getBBox(),p=svg.createSVGPoint();
+                p.x=bb.x;p.y=bb.y+bb.height;
+                const matrix=line.getCTM();
+                const y=matrix?p.matrixTransform(matrix).y:p.y;
+                const px=svgRect.top-systemRect.top+(y-viewBox.y)*sy;
+                staffBottom=staffBottom===null?px:Math.max(staffBottom,px);
+            }catch{}
+        }
+        // Use the actual staff when available, otherwise position within SVG.
+        if(staffBottom===null)staffBottom=svgRect.top-systemRect.top+svgRect.height*.72;
+        const marker=document.createElement('div');
+        marker.className='gs-measure-marker';
+        marker.setAttribute('aria-hidden','true');
+        marker.style.top=(staffBottom+9)+'px';
+        system.appendChild(marker);
+        markers.push({marker,boundaries,group});
     }
-    if(!positions.length) return;
-    const measureMarkers=new Map();
+    if(!markers.length)return;
     const update=()=>{
-        if(!playing || token!==playToken){clearGSScoreFollower();return;}
-        const elapsed=Math.max(0,ctx.currentTime-startTime) % (16*4*beat);
-        let active=null;
-        for(const p of positions){if(p.time<=elapsed+0.015) active=p;else break;}
-        measureMarkers.forEach((marker,system)=>{marker.style.display=active&&system===active.system?"block":"none";});
-        if(active){
-            let marker=measureMarkers.get(active.system);
-            if(!marker){
-                marker=document.createElement("div");
-                marker.className="gs-measure-marker";
-                marker.setAttribute("aria-hidden","true");
-                active.system.appendChild(marker);
-                measureMarkers.set(active.system,marker);
-            }
-            // A stationary indicator at beat one, held until the next measure.
-            marker.style.left=active.barX+"px";
-            if(active.staffBottom!==null){
-                // Triangle tip sits at the bottom staff line, consistently
-                // above low notes and their ledger lines.
-                marker.style.top=(active.staffBottom+1)+"px";
-            }
-            marker.style.display="block";
+        if(!playing||token!==playToken){clearGSScoreFollower();return;}
+        const elapsed=Math.max(0,ctx.currentTime-startTime);
+        const bar=Math.min(15,Math.floor((elapsed%(64*beat))/(4*beat)));
+        const group=Math.floor(bar/4),within=bar%4;
+        for(const item of markers){
+            const visible=item.group===group;
+            item.marker.style.display=visible?'block':'none';
+            if(visible)item.marker.style.left=item.boundaries[within]+'px';
         }
         window.gsFollowerFrame=requestAnimationFrame(update);
     };
