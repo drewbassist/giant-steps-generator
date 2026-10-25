@@ -281,7 +281,9 @@ function startGSScoreFollower(startTime, beat, token){
         const marker=document.createElement('div');
         marker.className='gs-measure-marker';
         marker.setAttribute('aria-hidden','true');
-        marker.style.top=(staffBottom+5)+'px';
+        // Keep the blue triangle visibly below the five-line staff.
+        // The earlier +5 offset left it on the staff in Chrome.
+        marker.style.top=(staffBottom+27)+'px';
         system.appendChild(marker);
         markers.push({marker,boundaries,group});
     }
