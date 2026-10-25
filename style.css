@@ -523,3 +523,13 @@ h1{font-size:48px;margin-bottom:8px}
 body.gs-about-visible{overflow:hidden}
 @media(max-width:600px){.gs-about-panel{padding:26px 19px;max-height:90vh}.gs-about-panel h2{font-size:22px}}
 @media print{.gs-about-overlay{display:none!important}}
+
+/* Giant Steps right-column button grid */
+#gs-control-panel .gs-right{min-width:0}
+#gs-control-panel #fg-favorites{width:100%;align-items:stretch}
+#gs-control-panel #fg-favorites .gs-favorite-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;width:100%;align-items:stretch}
+#gs-control-panel #fg-favorites .gs-favorite-grid > button,
+#gs-control-panel #fg-favorites .gs-favorite-grid > select{width:100%;min-width:0;max-width:none;box-sizing:border-box;height:40px;min-height:40px;margin:0;order:initial;text-align:center}
+#gs-control-panel #fg-favorites .gs-favorite-grid > select{text-align:left}
+#gs-control-panel .gs-right .gs-export-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;margin-top:12px}
+#gs-control-panel .gs-right .gs-export-row > button{width:100%;min-width:0;padding:8px 4px;box-sizing:border-box}
