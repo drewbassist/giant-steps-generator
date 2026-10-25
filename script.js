@@ -23,13 +23,23 @@ function midiName(m){return ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B
 function abcPitch(m){const p=['C','^C','D','_E','E','F','^F','G','_A','A','_B','B'][m%12],oct=Math.floor(m/12)-1;let base=p;if(oct>=5)base=base.replace(/[A-G]/,s=>s.toLowerCase())+"'".repeat(Math.max(0,oct-5));else base+=','.repeat(Math.max(0,4-oct));return base;}
 function abcBar(bar){
  const ev=activeEvents()[bar];let abc='',t=0;
+ // Accidentals apply to the same staff pitch only within this measure.
+ const accidentalsInBar=new Map();
  for(const e of ev){
   if(e.start>t+.0001)abc+=' z'+Math.round((e.start-t)*2);
   const chordChange=e.start===0||(Math.abs(e.start-2)<.0001&&D.bars[bar].length===2);
   const chordLabel=chordChange?'"'+e.chord.replace(/maj7/,'△7')+'"':'';
   const duration=Math.round(e.dur*2);
   // Original lead-sheet spelling: G-sharp in measures 6-7, not A-flat.
-  const spelledPitch=(e.chord==='Bmaj7'&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&[3,9].includes(bar)&&e.start===0&&e.m===71?'=B':abcPitch(e.m));
+  let spelledPitch=(e.chord==='Bmaj7'&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&[3,9].includes(bar)&&e.start===0&&e.m===71?'=B':abcPitch(e.m));
+  const pitchParts=/^([_=^]?)([A-Ga-g][,']*)$/.exec(spelledPitch);
+  if(pitchParts){
+   const [, accidental, staffPitch]=pitchParts;
+   if(!accidental && accidentalsInBar.has(staffPitch) && accidentalsInBar.get(staffPitch)!=='=')
+    spelledPitch='='+staffPitch;
+   if(accidental || spelledPitch[0]==='=')
+    accidentalsInBar.set(staffPitch,spelledPitch[0]);
+  }
   // Explicit beam boundaries: eighths form groups within each half-measure.
   // Never introduce a beam break solely because the harmony changes.
   const groupStart=originalMode||e.start===0||Math.abs(e.start-2)<.0001||e.dur>=1;
