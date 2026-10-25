@@ -262,7 +262,7 @@ function startGSScoreFollower(startTime, beat, token){
         const marker=document.createElement('div');
         marker.className='gs-measure-marker';
         marker.setAttribute('aria-hidden','true');
-        marker.style.top=(staffBottom+9)+'px';
+        marker.style.top=(staffBottom+1)+'px';
         system.appendChild(marker);
         markers.push({marker,boundaries,group});
     }
