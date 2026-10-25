@@ -288,7 +288,7 @@ function startGSScoreFollower(startTime, beat, token){
         for(const item of markers){
             const visible=item.group===group;
             item.marker.style.display=visible?'block':'none';
-            if(visible)item.marker.style.left=(item.starts[within]-4)+'px';
+            if(visible)item.marker.style.left=(item.starts[within]-12)+'px';
         }
         window.gsFollowerFrame=requestAnimationFrame(update);
     };
