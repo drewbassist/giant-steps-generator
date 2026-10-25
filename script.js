@@ -248,23 +248,40 @@ function startGSScoreFollower(startTime, beat, token){
         }
         // Use the five actual engraved staff rules, not a group bounding box
         // that can extend down to low notes and ledger lines.
+        // Anchor the triangle to the bottom of the actual engraved barlines.
+        // A barline spans the five staff lines; noteheads and beams do not.
+        // This avoids unreliable staff/path bounding boxes that left the
+        // marker in the middle of the staff.
+        const staffBarlines=[...svg.querySelectorAll('.abcjs-bar')];
         let staffBottom=null;
-        for(const path of svg.querySelectorAll('path')){
+        for(const line of staffBarlines){
             try{
-                const bb=path.getBBox();
-                if(bb.width<viewBox.width*.45 || bb.height>55)continue;
-                const matrix=path.getCTM(),p=svg.createSVGPoint();
-                p.x=bb.x;p.y=bb.y+bb.height;
+                const bb=line.getBBox(),matrix=line.getCTM();
+                if(bb.height<12)continue; // ignore decorative short marks
+                const p=svg.createSVGPoint();p.x=bb.x;p.y=bb.y+bb.height;
                 const y=matrix?p.matrixTransform(matrix).y:p.y;
                 const px=svgRect.top-systemRect.top+(y-viewBox.y)*sy;
-                staffBottom=staffBottom===null?px:Math.max(staffBottom,px);
+                // Barline endings may be taller (repeat dots), so take
+                // the lowest of the normal-height barlines when possible.
+                if(Number.isFinite(px))staffBottom=staffBottom===null?px:Math.max(staffBottom,px);
             }catch{}
+        }
+        if(staffBottom===null){
+            // SVG geometry fallback: the bottom staff line is typically
+            // near the lower edge of the clef's bounding box.
+            const clef=svg.querySelector('.abcjs-clef');
+            if(clef){try{
+                const bb=clef.getBBox(),matrix=clef.getCTM();
+                const p=svg.createSVGPoint();p.x=bb.x;p.y=bb.y+bb.height;
+                const y=matrix?p.matrixTransform(matrix).y:p.y;
+                staffBottom=svgRect.top-systemRect.top+(y-viewBox.y)*sy-4;
+            }catch{}}
         }
         if(staffBottom===null)staffBottom=svgRect.top-systemRect.top+svgRect.height*.72;
         const marker=document.createElement('div');
         marker.className='gs-measure-marker';
         marker.setAttribute('aria-hidden','true');
-        marker.style.top=(staffBottom+1)+'px';
+        marker.style.top=(staffBottom+5)+'px';
         system.appendChild(marker);
         markers.push({marker,boundaries,group});
     }
