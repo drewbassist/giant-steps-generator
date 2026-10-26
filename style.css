@@ -538,3 +538,7 @@ body.gs-about-visible{overflow:hidden}
 #gs-control-panel #fg-favorites > #gs-about-open{width:100%;box-sizing:border-box;align-self:stretch}
 #gs-control-panel #fg-favorites .gs-favorite-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 #gs-control-panel #fg-favorites .gs-favorite-grid > select{padding-left:4px;padding-right:4px}
+
+/* Clef selection; keep the existing three-column control layout intact. */
+.gs-clef-control{display:inline-flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap;margin:0 8px 0 0}
+.gs-clef-control select{font:inherit;max-width:165px}
