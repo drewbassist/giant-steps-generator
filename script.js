@@ -54,13 +54,13 @@ function abcBar(bar){
   const chordLabel=chordChange?'"'+transposeChord(e.chord,instrumentShift()).replace(/maj7/,'△7')+'"':'';
   const duration=Math.round(e.dur*2);
   // Original lead-sheet spelling: G-sharp in measures 6-7, not A-flat.
-  let spelledPitch=(e.chord==='Bmaj7'&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&e.m%12===3)?(e.m>=72?'^d':'^D'):(originalMode&&[3,9].includes(bar)&&e.start===0&&e.m===71?'=B':abcPitch(e.m));
+  let spelledPitch=(instrumentShift()===0&&e.chord==='Bmaj7'&&e.m%12===3)?(e.m>=72?'^d':'^D'):(instrumentShift()===0&&originalMode&&e.m%12===3)?(e.m>=72?'^d':'^D'):(instrumentShift()===0&&originalMode&&[3,9].includes(bar)&&e.start===0&&e.m===71?'=B':abcPitch(e.m));
   // Chord-specific enharmonic spelling only; MIDI pitch and timing are unchanged.
   const preferredSharp=(e.chord==='F#7'&&e.m%12===8)?'G':
                        (e.chord==='F#7'&&e.m%12===10)?'A':
                        (e.chord==='C#m7'&&e.m%12===8)?'G':
                        (e.chord==='C#m7'&&e.m%12===3)?'D':null;
-  if(preferredSharp){
+  if(preferredSharp && instrumentShift()===0){
    const octave=Math.floor(e.m/12)-1;
    spelledPitch='^'+(octave>=5?preferredSharp.toLowerCase():preferredSharp)+
      (octave>=5?"'".repeat(octave-5):','.repeat(4-octave));
