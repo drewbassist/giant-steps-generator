@@ -7,12 +7,15 @@ let events=[],rhythmIds=[],originalMode=false,playing=false,ctx=null,sources=[],
 const patterns={straight:[0,1,2,3],retro:[3,2,1,0],inverted:[0,2,1,3],river:[3,0,1,2],enclosure:[1,0,2,3]};
 function noteCandidates(name){let a=[];for(let oct=2;oct<=7;oct++){const m=(oct+1)*12+PC[name];if(m>=Number($('fg-low').value)&&m<=Number($('fg-high').value))a.push(m);}return a;}
 function nearest(name,prev,mode){const pool=noteCandidates(name);if(!pool.length)throw Error('No available pitch in the selected range: '+name);const sorted=pool.map(m=>({m,score:prev==null?Math.abs(m-70):Math.abs(m-prev)}));sorted.sort((a,b)=>a.score-b.score);if(mode==='smooth')return sorted[0].m;if(mode==='angular')return pick(sorted.slice(0,Math.min(3,sorted.length))).m;return sorted[0].m;}
-function patternNames(chord){let names=D.pitch[chord], mode=$('gs-order').value;if(mode==='random')mode=pick(Object.keys(patterns));return patterns[mode].map(i=>names[i]);}
+const pairedPatterns={pair_retro_straight:['retro','straight'],pair_straight_river:['straight','river'],pair_river_enclosure:['river','enclosure'],pair_inverted_river:['inverted','river']};
+function patternNames(chord,chosenMode){let names=D.pitch[chord],mode=chosenMode||$('gs-order').value;if(mode==='random')mode=pick(Object.keys(patterns));return patterns[mode].map(i=>names[i]);}
 function rhythmDurations(id){const str=D.rhythms[id];let durations=[];for(const token of str.match(/Q\.|Q|E/g)||[])durations.push(token==='Q.'?1.5:token==='Q'?1:.5);if(Math.abs(durations.reduce((a,b)=>a+b,0)-4)>.01)throw Error('Invalid rhythm '+id);return durations;}
 function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:ch[0][0];}
 function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null;for(let bar=0;bar<16;bar++){
+ const order=$('gs-order').value, pair=pairedPatterns[order];
+ const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
  let durations=([2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={};
- for(const d of durations){let end=time+d;while(time<end-1e-6){let chord=chordAt(bar,time),segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end, names=seqs[chord]||(seqs[chord]=patternNames(chord)),n=idx[chord]||0,name=names[n%4];idx[chord]=n+1;
+ for(const d of durations){let end=time+d;while(time<end-1e-6){let chord=chordAt(bar,time),segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end, names=seqs[chord]||(seqs[chord]=patternNames(chord,selectedModes?.[D.bars[bar].length===2&&time>=2?1:0])),n=idx[chord]||0,name=names[n%4];idx[chord]=n+1;
  let mode=$('gs-mode').value, m=nearest(name,prev,mode);if(mode==='triadic'||mode==='quartal'){const candidates=noteCandidates(name);if(mode==='quartal'&&prev!=null){const rank=n=>{const d=Math.abs(n-prev);return d===5?0:d===6?1:2+Math.abs(d-5)+(d===3||d===4?10:0);};candidates.sort((a,b)=>rank(a)-rank(b)||Math.abs(a-prev)-Math.abs(b-prev));}else{const goal=mode==='quartal'?5:4;candidates.sort((a,b)=>Math.abs(Math.abs(a-(prev??a))-goal)-Math.abs(Math.abs(b-(prev??b))-goal));}m=candidates[0];}
  barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});prev=m;time=segmentEnd;
  }}events.push(barEvents);
