@@ -333,10 +333,12 @@ function sampleBoost(buffer){
  }
  return Math.min(7,Math.max(1,.65/Math.max(peak,.001)));
 }
-function stop(){clearGSScoreFollower();playToken++;if(stopTimer)clearTimeout(stopTimer);for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;melodyBus=null;accompBus=null;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
+function stop(){clearGSScoreFollower();playToken++;if(stopTimer){clearTimeout(stopTimer);stopTimer=null;}for(const s of sources){try{s.stop()}catch{}}sources=[];playing=false;if(melodyBus)try{melodyBus.disconnect()}catch{};if(accompBus)try{accompBus.disconnect()}catch{};melodyBus=null;accompBus=null;$('playPause').disabled=false;$('playPause').textContent='▶ Play';$('transport-status').textContent='Ready';}
 async function play(){
  if(playing){stop();return;}
- ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();const token=++playToken;
+ const token=++playToken;
+ ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();
+ if(token!==playToken)return;
  $('transport-status').textContent='Loading sounds…';$('playPause').disabled=true;
  const beat=60/Math.max(40,Math.min(240,Number($('tempo').value)||80));
  const melody=concertEvents().flat();
@@ -350,21 +352,31 @@ async function play(){
  if(token!==playToken){$('playPause').disabled=false;return;}
  const accompanimentBuffers=new Map();
  for(const m of new Set(chords.flatMap(c=>c.m))){
+  if(token!==playToken)return;
   const sourceMidi=sampleSource('piano',m);
   accompanimentBuffers.set(sourceMidi,await bufferCache.get('piano-'+sourceMidi));
  }
+ // Generation/Stop can occur during asynchronous buffer resolution. Never schedule a stale run.
+ if(token!==playToken)return;
+ const melodyBuffers=new Map();
+ for(const m of new Set(melody.map(e=>e.m))){
+  const sourceMidi=sampleSource('rhodes',m);
+  melodyBuffers.set(sourceMidi,await bufferCache.get('rhodes-'+sourceMidi));
+ }
+ if(token!==playToken)return;
  melodyBus=ctx.createGain();accompBus=ctx.createGain();
  melodyBus.connect(ctx.destination);accompBus.connect(ctx.destination);
  updateMix();
  const start=ctx.currentTime+.12;
- const schedule=(m,t,d,sound,volume)=>{const sourceMidi=sampleSource(sound,m),buf=bufferCache.get(sound+'-'+sourceMidi);if(!buf)return;
- // All buffers are loaded: scheduling is now synchronous and sample-accurate.
- return buf.then(audio=>{if(token!==playToken)return;let src=ctx.createBufferSource(),gain=ctx.createGain();src.buffer=audio;src.playbackRate.value=2**((m-sourceMidi)/12);
+ const schedule=(m,t,d,sound,volume)=>{
+ if(token!==playToken)return;
+ const sourceMidi=sampleSource(sound,m),audio=melodyBuffers.get(sourceMidi);if(!audio)return;
+ let src=ctx.createBufferSource(),gain=ctx.createGain();src.buffer=audio;src.playbackRate.value=2**((m-sourceMidi)/12);
  let when=start+t*beat,duration=Math.max(.07,d*beat);gain.gain.setValueAtTime(.0001,when);
  gain.gain.linearRampToValueAtTime(Math.max(.0001,volume),when+.02);
  gain.gain.setValueAtTime(Math.max(.0001,volume),when+Math.max(.021,duration-.04));
  gain.gain.linearRampToValueAtTime(.0001,when+duration);src.connect(gain).connect(melodyBus);
- src.start(when);src.stop(when+duration+.01);sources.push(src);});};
+ src.start(when);src.stop(when+duration+.01);sources.push(src);};
  playing=true;startGSScoreFollower(start,beat,token);$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
  // Closed hi-hat on beats 2 and 4, using short filtered noise bursts.
  if($('gs-hat')?.checked){
@@ -404,7 +416,7 @@ async function play(){
    src.start(when);src.stop(when+duration+.01);sources.push(src);
   }
  }
- }await Promise.all(jobs);
+ }
  if(token===playToken)stopTimer=setTimeout(stop,128*beat*1000+300);
 }
 function midiExport(){const ppq=480,track=[],ev=[];const add=(tick,bytes)=>ev.push([tick,bytes]);for(let bar of concertEvents())for(let e of bar){let t=Math.round((e.bar*4+e.start)*ppq),end=t+Math.round(e.dur*ppq);add(t,[0x90,e.m,94]);add(end,[0x80,e.m,0]);}ev.sort((a,b)=>a[0]-b[0]||a[1][0]-b[1][0]);const varlen=n=>{let out=[n&127];while(n>>=7)out.unshift((n&127)|128);return out};let prev=0;for(let [t,msg]of ev){track.push(...varlen(t-prev),...msg);prev=t;}track.push(0,0xff,0x2f,0);const u32=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];const tempo=Math.round(60000000/Number($('tempo').value||80));const meta=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255,0,0xff,0x2f,0];const bytes=[...Array.from('MThd',x=>x.charCodeAt(0)),0,0,0,6,0,1,0,2,1,224,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(meta.length),...meta,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(track.length),...track];download(new Blob([new Uint8Array(bytes)],{type:'audio/midi'}),'giant-steps.mid');}
