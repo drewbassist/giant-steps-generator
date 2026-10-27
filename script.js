@@ -15,8 +15,24 @@ function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:c
 function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null;for(let bar=0;bar<16;bar++){
  const order=$('gs-order').value, pair=pairedPatterns[order];
  const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
- let durations=(allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={};
- for(const d of durations){let end=time+d;while(time<end-1e-6){let chord=chordAt(bar,time),segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end, names=seqs[chord]||(seqs[chord]=patternNames(chord,selectedModes?.[D.bars[bar].length===2&&time>=2?1:0])),n=idx[chord]||0,name=names[n%4];idx[chord]=n+1;
+ let durations=(allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={},secondGroups={};
+ for(const d of durations){let end=time+d;while(time<end-1e-6){let chord=chordAt(bar,time),segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end, names=seqs[chord]||(seqs[chord]=patternNames(chord,selectedModes?.[D.bars[bar].length===2&&time>=2?1:0])),n=idx[chord]||0,name=names[n%4];
+ // In the five single-chord exception bars, vary the second group of four eighths.
+ // Keep the selected first-group ordering and the same four pitch-cell tones.
+ if(allEighths&&[2,6,10,12,14].includes(bar)&&n>=4){
+  if(!secondGroups[chord]){
+   let choices=[];
+   for(let a=0;a<4;a++)for(let b=0;b<4;b++)for(let c=0;c<4;c++)for(let d=0;d<4;d++){
+    const ids=[a,b,c,d];
+    if(new Set(ids).size!==4||ids.every((v,i)=>v===i))continue;
+    if(names[ids[0]]===names[3])continue;
+    choices.push(ids.map(i=>names[i]));
+   }
+   secondGroups[chord]=pick(choices)||shuffle(names);
+  }
+  name=secondGroups[chord][(n-4)%4];
+ }
+ idx[chord]=n+1;
  let mode=$('gs-mode').value;
  // Never repeat the same sounding pitch at successive attacks, including across bars.
  // Prefer the selected pitch cell; if its only available octave repeats, use another cell tone.
