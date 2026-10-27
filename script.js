@@ -452,7 +452,42 @@ function midiExport(){const ppq=480,track=[],ev=[];const add=(tick,bytes)=>ev.pu
 function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
 async function wavExport(){const bpm=Number($('tempo').value)||80,beat=60/bpm,sr=22050,length=Math.ceil((64*beat+1)*sr),offline=new OfflineAudioContext(1,length,sr);const notes=concertEvents().flat();for(let e of notes){let start=(e.bar*4+e.start)*beat,dur=e.dur*beat;let osc=offline.createOscillator(),gain=offline.createGain();osc.type='sine';osc.frequency.value=440*2**((e.m-69)/12);gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(.15*Number($('gs-melvol').value),start+.02);gain.gain.setValueAtTime(.13*Number($('gs-melvol').value),start+Math.max(.021,dur-.04));gain.gain.linearRampToValueAtTime(0,start+dur);osc.connect(gain).connect(offline.destination);osc.start(start);osc.stop(start+dur+.01)}let buf=await offline.startRendering(),f=buf.getChannelData(0),wav=new ArrayBuffer(44+f.length*2),view=new DataView(wav);const str=(off,s)=>{for(let i=0;i<s.length;i++)view.setUint8(off+i,s.charCodeAt(i))};str(0,'RIFF');view.setUint32(4,36+f.length*2,true);str(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);str(36,'data');view.setUint32(40,f.length*2,true);for(let i=0;i<f.length;i++)view.setInt16(44+i*2,Math.max(-32768,Math.min(32767,Math.round(f[i]*32767))),true);download(new Blob([wav],{type:'audio/wav'}),'giant-steps.wav');}
 function setupFavorites(){const key='giant-steps-favorites-v1';const load=()=>JSON.parse(localStorage.getItem(key)||'[]');const refresh=()=>{let select=$('fg-load');select.innerHTML='<option value="">Load Favorite…</option>';load().forEach((x,i)=>{let o=document.createElement('option');o.value=i;o.textContent=x.name;select.appendChild(o)});select.disabled=!load().length;$('fg-delete').disabled=!load().length;};$('fg-auth-status').textContent='Favorites: saved in this browser';$('fg-sign-in').hidden=true;$('fg-sign-out').hidden=true;$('fg-save').disabled=false;$('fg-save').onclick=()=>{let arr=load(),name=prompt('Favorite name','Giant Steps '+(arr.length+1));if(!name)return;arr.push({name,rhythmIds,events,originalMode,allEighths,clef:$('gs-clef').value,instrument:$('gs-instrument').value});localStorage.setItem(key,JSON.stringify(arr));refresh();};$('fg-load').onchange=e=>{let x=load()[Number(e.target.value)];if(!x)return;rhythmIds=x.rhythmIds;events=x.events;originalMode=x.originalMode;allEighths=!!x.allEighths;$('gs-clef').value=x.clef||'treble';$('gs-instrument').value=x.instrument||'0';render();};$('fg-delete').onclick=()=>{let idx=Number($('fg-load').value);if(!$('fg-load').value)return;let arr=load();arr.splice(idx,1);localStorage.setItem(key,JSON.stringify(arr));refresh();};refresh();}
-window.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===button));$('gs-mode').value=button.dataset.mode;generate(false);}));$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;generate();};$('rhythms').onclick=()=>{allEighths=false;generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;generate(false);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
+// Remember interface preferences, but generate fresh notes on every page load.
+const GS_SETTINGS_KEY='giant-steps-settings-v1';
+const GS_SAVED_CONTROLS=['gs-mode','gs-order','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
+function saveGSSettings(){
+ try{
+  const settings={allEighths};
+  for(const id of GS_SAVED_CONTROLS){const el=$(id);if(el)settings[id]=el.type==='checkbox'?el.checked:el.value;}
+  localStorage.setItem(GS_SETTINGS_KEY,JSON.stringify(settings));
+ }catch(err){console.warn('Could not save Giant Steps settings:',err);}
+}
+function restoreGSSettings(){
+ try{
+  const settings=JSON.parse(localStorage.getItem(GS_SETTINGS_KEY)||'null');
+  if(!settings||typeof settings!=='object')return;
+  for(const id of GS_SAVED_CONTROLS){
+   const el=$(id),value=settings[id];
+   if(!el||value===undefined||value===null)continue;
+   if(el.type==='checkbox')el.checked=!!value;
+   else if([...el.options||[]].length){if([...el.options].some(option=>option.value===String(value)))el.value=String(value);}
+   else el.value=String(value);
+  }
+  allEighths=!!settings.allEighths;
+  document.querySelectorAll('[data-mode]').forEach(button=>button.classList.toggle('selected',button.dataset.mode===$('gs-mode').value));
+  $('tempo-value').textContent=$('tempo').value+' BPM';
+ }catch(err){console.warn('Could not restore Giant Steps settings:',err);}
+}
+function watchGSSettings(){
+ for(const id of GS_SAVED_CONTROLS){
+  const el=$(id);if(!el)continue;
+  el.addEventListener('change',saveGSSettings);
+  el.addEventListener('input',saveGSSettings);
+ }
+ document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>queueMicrotask(saveGSSettings)));
+ for(const id of ['generate','rhythms','gs-all-eighths'])$(id)?.addEventListener('click',()=>queueMicrotask(saveGSSettings));
+}
+window.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===button));$('gs-mode').value=button.dataset.mode;generate(false);}));$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;generate();};$('rhythms').onclick=()=>{allEighths=false;generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;generate(false);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
 // Spacebar controls Play/Stop, except while editing or using a form control.
 document.addEventListener('keydown',event=>{
  if(event.code!=='Space'||event.repeat||event.altKey||event.ctrlKey||event.metaKey)return;
