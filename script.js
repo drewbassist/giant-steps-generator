@@ -65,6 +65,18 @@ function abcBar(bar){
    spelledPitch='^'+(octave>=5?preferredSharp.toLowerCase():preferredSharp)+
      (octave>=5?"'".repeat(octave-5):','.repeat(4-octave));
   }
+  // Spell notes against the *displayed* G-flat dominant harmony with flats.
+  // Only the engraving changes; event MIDI pitches and playback remain intact.
+  const writtenChord=transposeChord(e.chord,instrumentShift());
+  if(writtenChord==='Gb7'){
+   const flatSpelling={1:'Db',3:'Eb',4:'Fb',6:'Gb',8:'Ab',10:'Bb'};
+   const name=flatSpelling[e.m%12];
+   if(name){
+    const octave=Math.floor(e.m/12)-1;
+    const letter=name[0],acc=name[1]==='b'?'_':'';
+    spelledPitch=acc+(octave>=5?letter.toLowerCase()+"'".repeat(octave-5):letter+','.repeat(4-octave));
+   }
+  }
   const pitchParts=/^([_=^]?)([A-Ga-g][,']*)$/.exec(spelledPitch);
   if(pitchParts){
    const [, accidental, staffPitch]=pitchParts;
