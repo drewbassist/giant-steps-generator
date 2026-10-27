@@ -17,9 +17,9 @@ function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerat
  const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
  let durations=(allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={},secondGroups={};
  for(const d of durations){let end=time+d;while(time<end-1e-6){let chord=chordAt(bar,time),segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end, names=seqs[chord]||(seqs[chord]=patternNames(chord,selectedModes?.[D.bars[bar].length===2&&time>=2?1:0])),n=idx[chord]||0,name=names[n%4];
- // In the five single-chord exception bars, vary the second group of four eighths.
+ // In the six designated bars, vary the second group of four eighths.
  // Keep the selected first-group ordering and the same four pitch-cell tones.
- if(allEighths&&[2,6,10,12,14].includes(bar)&&n>=4){
+ if(allEighths&&[2,6,8,10,12,14].includes(bar)&&n>=4){
   if(!secondGroups[chord]){
    let choices=[];
    for(let a=0;a<4;a++)for(let b=0;b<4;b++)for(let c=0;c<4;c++)for(let d=0;d<4;d++){
