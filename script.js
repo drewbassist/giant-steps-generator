@@ -9,32 +9,54 @@ const patterns={straight:[0,1,2,3],retro:[3,2,1,0],inverted:[0,2,1,3],river:[3,0
 function noteCandidates(name){let a=[];for(let oct=2;oct<=7;oct++){const m=(oct+1)*12+PC[name];if(m>=Number($('fg-low').value)&&m<=Number($('fg-high').value))a.push(m);}return a;}
 const pairedPatterns={pair_retro_straight:['retro','straight'],pair_straight_river:['straight','river'],pair_river_enclosure:['river','enclosure'],pair_inverted_river:['inverted','river']};
 function patternNames(chord,chosenMode){let names=D.pitch[chord],mode=chosenMode||$('gs-order').value;if(mode==='random')mode=pick(Object.keys(patterns));return patterns[mode].map(i=>names[i]);}
-// Voice-lead complete four-note cells. The first pitch is selected relative
-// to the LAST pitch of the preceding cell, not to a fixed register target.
-// Search available octave placements without changing the 1235/5321 order.
-function voiceLeadCell(names,previous,direction){
- const pools=names.map(name=>noteCandidates(name));
- if(pools.some(pool=>!pool.length))throw Error('No playable octave for cell '+names.join('-'));
+// Rotate the intact 1-2-3-5 pitch-class cell to start on the closest
+// available degree (1, 2, 3 or 5). Direction determines the traversal;
+// octave placement must follow that direction within the selected range.
+function voiceLeadCell(tones,previous,direction){
+ const order=direction==='descending'?[3,2,1,0]:[0,1,2,3];
  let best=null,bestCost=Infinity;
- function visit(i,path,cost){
-  if(cost>=bestCost)return;
-  if(i===pools.length){best=path.slice();bestCost=cost;return;}
-  for(const pitch of pools[i]){
-   let extra=0;
-   if(i===0){
-    // The join between cells matters more than their register on the staff.
-    if(previous!=null)extra+=4*Math.abs(pitch-previous);
-   }else{
-    const step=pitch-path[i-1];
-    extra+=Math.abs(step);
-    // Keep the intended direction where the selected range permits it.
-    if(direction==='ascending'&&step<=0)extra+=8+Math.abs(step)*2;
-    if(direction==='descending'&&step>=0)extra+=8+Math.abs(step)*2;
+ for(let rotation=0;rotation<4;rotation++){
+  const names=Array.from({length:4},(_,i)=>tones[order[(rotation+i)%4]]);
+  const pools=names.map(noteCandidates);
+  if(pools.some(pool=>!pool.length))continue;
+  function visit(i,path){
+   if(i===4){
+    const join=previous==null?Math.abs(path[0]-70):Math.abs(path[0]-previous);
+    const inside=path.slice(1).reduce((sum,p,j)=>sum+Math.abs(p-path[j]),0);
+    // Prefer a close join, then compact steps within the cell.
+    const cost=join*4+inside+(previous!=null&&join===0?3:0);
+    if(cost<bestCost){bestCost=cost;best={names,pitches:path.slice()};}
+    return;
    }
-   visit(i+1,[...path,pitch],cost+extra);
+   for(const pitch of pools[i]){
+    if(i){
+     const step=pitch-path[i-1];
+     if(direction==='ascending'&&step<=0)continue;
+     if(direction==='descending'&&step>=0)continue;
+    }
+    path.push(pitch);visit(i+1,path);path.pop();
+   }
+  }
+  visit(0,[]);
+ }
+ // A very narrow range may not contain a full strictly directed cell.
+ // In that case, keep the four chord tones and minimize movement rather
+ // than failing and leaving the score blank.
+ if(!best){
+  for(let rotation=0;rotation<4;rotation++){
+   const names=Array.from({length:4},(_,i)=>tones[order[(rotation+i)%4]]);
+   const pools=names.map(noteCandidates);
+   if(pools.some(pool=>!pool.length))continue;
+   const pitches=[];let last=previous;
+   for(const pool of pools){
+    const candidate=pool.reduce((a,p)=>Math.abs(p-(last??70))<Math.abs(a-(last??70))?p:a,pool[0]);
+    pitches.push(candidate);last=candidate;
+   }
+   const cost=(previous==null?0:4*Math.abs(pitches[0]-previous))+pitches.slice(1).reduce((s,p,i)=>s+Math.abs(p-pitches[i]),0);
+   if(cost<bestCost){bestCost=cost;best={names,pitches};}
   }
  }
- visit(0,[],0);
+ if(!best)throw Error('No playable octave for cell '+tones.join('-'));
  return best;
 }
 function rhythmDurations(id){const str=D.rhythms[id];let durations=[];for(const token of str.match(/Q\.|Q|E/g)||[])durations.push(token==='Q.'?1.5:token==='Q'?1:.5);if(Math.abs(durations.reduce((a,b)=>a+b,0)-4)>.01)throw Error('Invalid rhythm '+id);return durations;}
@@ -63,11 +85,11 @@ function generate(regenerateRhythms=true){
        setting==='random'?pick(['ascending','descending']):
        setting==='half-half'?balancedDirections[cellIndex%balancedDirections.length]:setting;
      cellDirections[chord]=direction;
-     // Direction defines the entire four-note cell: 1235 or 5321.
-     // Never rotate a cell into 5123 or another permutation.
-     const tones=D.pitch[chord];
-     seqs[chord]=(direction==='descending'?[3,2,1,0]:[0,1,2,3]).map(i=>tones[i]);
-     cellPitches[chord]=voiceLeadCell(seqs[chord],prev,direction);
+     // Choose the smoothest of four cyclic rotations of 1235 or 5321.
+     // The starting degree may be 1, 2, 3 or 5.
+     const cell=voiceLeadCell(D.pitch[chord],prev,direction);
+     seqs[chord]=cell.names;
+     cellPitches[chord]=cell.pitches;
      cellIndex++;
     }
     const direction=cellDirections[chord];
