@@ -7,14 +7,17 @@ let allEighths=false;
 let events=[],rhythmIds=[],originalMode=false,playing=false,ctx=null,sources=[],stopTimer=null,bufferCache=new Map(),selectedFavorite=null;
 const patterns={straight:[0,1,2,3],retro:[3,2,1,0],inverted:[0,2,1,3],river:[3,0,1,2],enclosure:[1,0,2,3]};
 function noteCandidates(name){let a=[];for(let oct=2;oct<=7;oct++){const m=(oct+1)*12+PC[name];if(m>=Number($('fg-low').value)&&m<=Number($('fg-high').value))a.push(m);}return a;}
-function nearest(name,prev,mode){let pool=noteCandidates(name).filter(m=>m!==prev);if(!pool.length)throw Error('No available pitch in the selected range: '+name);const sorted=pool.map(m=>({m,score:prev==null?Math.abs(m-70):Math.abs(m-prev)}));sorted.sort((a,b)=>a.score-b.score);if(mode==='smooth')return sorted[0].m;if(mode==='angular')return pick(sorted.slice(0,Math.min(3,sorted.length))).m;return sorted[0].m;}
 const pairedPatterns={pair_retro_straight:['retro','straight'],pair_straight_river:['straight','river'],pair_river_enclosure:['river','enclosure'],pair_inverted_river:['inverted','river']};
 function patternNames(chord,chosenMode){let names=D.pitch[chord],mode=chosenMode||$('gs-order').value;if(mode==='random')mode=pick(Object.keys(patterns));return patterns[mode].map(i=>names[i]);}
 // Keep each four-note pitch-class pattern intact while moving its pitches
 // through the selected contour. Prefer a directional step at EVERY attack.
-function directionalPitch(name,prev,direction,mode,cellStart){
- const pool=noteCandidates(name).filter(m=>m!==prev);
- if(!pool.length)return nearest(name,prev,mode);
+function directionalPitch(name,prev,direction,cellStart){
+ const available=noteCandidates(name);
+ if(!available.length)throw Error('No available pitch in the selected range: '+name);
+ // A repeated cell tone can have only one playable octave in a narrow range.
+ // Preserve its pitch class rather than aborting the entire score.
+ const nonRepeating=available.filter(m=>m!==prev);
+ const pool=nonRepeating.length?nonRepeating:available;
  const low=Number($('fg-low').value),high=Number($('fg-high').value);
  const preferred=prev==null?pool:pool.filter(m=>direction==='ascending'?m>prev:m<prev);
  const candidates=preferred.length?preferred:pool;
@@ -58,10 +61,9 @@ function generate(regenerateRhythms=true){
     const direction=cellDirections[chord];
     const name=seqs[chord][n%4];
     idx[chord]=n+1;
-    const mode=$('gs-mode').value;
     // Preserve the exact pitch-class order, including across octave changes.
     // Never replace a requested cell tone with another pitch class.
-    const m=directionalPitch(name,prev,direction,mode,cellStart);
+    const m=directionalPitch(name,prev,direction,cellStart);
     barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});
     prev=m;time=segmentEnd;
    }
@@ -479,7 +481,7 @@ async function wavExport(){const bpm=Number($('tempo').value)||80,beat=60/bpm,sr
 function setupFavorites(){const key='giant-steps-favorites-v1';const load=()=>JSON.parse(localStorage.getItem(key)||'[]');const refresh=()=>{let select=$('fg-load');select.innerHTML='<option value="">Load Favorite…</option>';load().forEach((x,i)=>{let o=document.createElement('option');o.value=i;o.textContent=x.name;select.appendChild(o)});select.disabled=!load().length;$('fg-delete').disabled=!load().length;};$('fg-auth-status').textContent='Favorites: saved in this browser';$('fg-sign-in').hidden=true;$('fg-sign-out').hidden=true;$('fg-save').disabled=false;$('fg-save').onclick=()=>{let arr=load(),name=prompt('Favorite name','Giant Steps '+(arr.length+1));if(!name)return;arr.push({name,rhythmIds,events,originalMode,allEighths,clef:$('gs-clef').value,instrument:$('gs-instrument').value});localStorage.setItem(key,JSON.stringify(arr));refresh();};$('fg-load').onchange=e=>{let x=load()[Number(e.target.value)];if(!x)return;rhythmIds=x.rhythmIds;events=x.events;originalMode=x.originalMode;allEighths=!!x.allEighths;$('gs-clef').value=x.clef||'treble';$('gs-instrument').value=x.instrument||'0';render();};$('fg-delete').onclick=()=>{let idx=Number($('fg-load').value);if(!$('fg-load').value)return;let arr=load();arr.splice(idx,1);localStorage.setItem(key,JSON.stringify(arr));refresh();};refresh();}
 // Remember interface preferences, but generate fresh notes on every page load.
 const GS_SETTINGS_KEY='giant-steps-settings-v1';
-const GS_SAVED_CONTROLS=['gs-mode','gs-order','gs-direction','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
+const GS_SAVED_CONTROLS=['gs-order','gs-direction','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
 function saveGSSettings(){
  try{
   const settings={allEighths};
@@ -499,7 +501,6 @@ function restoreGSSettings(){
    else el.value=String(value);
   }
   allEighths=!!settings.allEighths;
-  document.querySelectorAll('[data-mode]').forEach(button=>button.classList.toggle('selected',button.dataset.mode===$('gs-mode').value));
   $('tempo-value').textContent=$('tempo').value+' BPM';
  }catch(err){console.warn('Could not restore Giant Steps settings:',err);}
 }
@@ -509,11 +510,10 @@ function watchGSSettings(){
   el.addEventListener('change',saveGSSettings);
   el.addEventListener('input',saveGSSettings);
  }
- document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>queueMicrotask(saveGSSettings)));
  for(const id of ['generate','rhythms','gs-all-eighths'])$(id)?.addEventListener('click',()=>queueMicrotask(saveGSSettings));
 }
 window.addEventListener('pagehide',saveGSSettings);
-window.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===button));$('gs-mode').value=button.dataset.mode;generate(false);}));$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();
+window.addEventListener('DOMContentLoaded',()=>{$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();
  // Add the fifth choice without requiring changes to index.html.
  const directionSelect=$('gs-direction');
  if(directionSelect&&!directionSelect.querySelector('option[value="half-half"]')){
@@ -529,4 +529,4 @@ document.addEventListener('keydown',event=>{
  if(target instanceof Element && (target.closest('input, textarea, select, button, [contenteditable]') || target.isContentEditable))return;
  event.preventDefault();
  if(!$('playPause').disabled)play();
-});$('stopPlayback').onclick=stop;$('gs-mode').onchange=()=>generate(false);$('gs-order').onchange=()=>generate(false);$('gs-direction').onchange=()=>generate(false);$('gs-original').onclick=()=>{stop();originalMode=!originalMode;$('gs-original').textContent=originalMode?'Return to Generated':'Original Melody';render();};$('gs-midi').onclick=midiExport;$('gs-wav').onclick=wavExport;$('gs-pdf').onclick=()=>window.print();generate();});
+});$('stopPlayback').onclick=stop;$('gs-order').onchange=()=>generate(false);$('gs-direction').onchange=()=>generate(false);$('gs-original').onclick=()=>{stop();originalMode=!originalMode;$('gs-original').textContent=originalMode?'Return to Generated':'Original Melody';render();};$('gs-midi').onclick=midiExport;$('gs-wav').onclick=wavExport;$('gs-pdf').onclick=()=>window.print();generate();});
