@@ -25,48 +25,51 @@ function directionalPitch(name,prev,direction,mode,cellStart){
 }
 function rhythmDurations(id){const str=D.rhythms[id];let durations=[];for(const token of str.match(/Q\.|Q|E/g)||[])durations.push(token==='Q.'?1.5:token==='Q'?1:.5);if(Math.abs(durations.reduce((a,b)=>a+b,0)-4)>.01)throw Error('Invalid rhythm '+id);return durations;}
 function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:ch[0][0];}
-function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null,cellIndex=0,cellDirection=null;for(let bar=0;bar<16;bar++){
- const order=$('gs-order').value, pair=pairedPatterns[order];
- const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
- let durations=(allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={},secondGroups={};
- for(const d of durations){let end=time+d;while(time<end-1e-6){let chord=chordAt(bar,time),segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end, names=seqs[chord]||(seqs[chord]=patternNames(chord,selectedModes?.[D.bars[bar].length===2&&time>=2?1:0])),n=idx[chord]||0,name=names[n%4];
- // In the six designated bars, vary the second group of four eighths.
- // Keep the selected first-group ordering and the same four pitch-cell tones.
- if(allEighths&&[2,6,8,10,12,14].includes(bar)&&n>=4){
-  if(!secondGroups[chord]){
-   let choices=[];
-   for(let a=0;a<4;a++)for(let b=0;b<4;b++)for(let c=0;c<4;c++)for(let d=0;d<4;d++){
-    const ids=[a,b,c,d];
-    if(new Set(ids).size!==4||ids.every((v,i)=>v===i))continue;
-    if(names[ids[0]]===names[3])continue;
-    choices.push(ids.map(i=>names[i]));
+function generate(regenerateRhythms=true){
+ stop();originalMode=false;
+ if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);
+ events=[];let prev=null,cellIndex=0;
+ // Exactly 32 cells per chart: two per measure, including partial cells.
+ // Half & Half uses 16 ascending and 16 descending cells in shuffled order.
+ const balancedDirections=shuffle([...Array(16).fill('ascending'),...Array(16).fill('descending')]);
+ for(let bar=0;bar<16;bar++){
+  const order=$('gs-order').value,pair=pairedPatterns[order];
+  const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
+  const durations=allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5);
+  let time=0,barEvents=[],seqs={},idx={},cellDirections={};
+  for(const d of durations){
+   const end=time+d;
+   while(time<end-1e-6){
+    const chord=chordAt(bar,time);
+    const segmentEnd=D.bars[bar].length===2&&time<2?Math.min(end,2):end;
+    const n=idx[chord]||0,cellStart=n%4===0;
+    if(cellStart){
+     const setting=$('gs-direction')?.value||'random';
+     const direction=setting==='alternating'?(cellIndex%2?'descending':'ascending'):
+       setting==='random'?pick(['ascending','descending']):
+       setting==='half-half'?balancedDirections[cellIndex%balancedDirections.length]:setting;
+     cellDirections[chord]=direction;
+     // Direction defines the entire four-note cell: 1235 or 5321.
+     // Never rotate a cell into 5123 or another permutation.
+     const tones=D.pitch[chord];
+     seqs[chord]=(direction==='descending'?[3,2,1,0]:[0,1,2,3]).map(i=>tones[i]);
+     cellIndex++;
+    }
+    const direction=cellDirections[chord];
+    const name=seqs[chord][n%4];
+    idx[chord]=n+1;
+    const mode=$('gs-mode').value;
+    // Preserve the exact pitch-class order, including across octave changes.
+    // Never replace a requested cell tone with another pitch class.
+    const m=directionalPitch(name,prev,direction,mode,cellStart);
+    barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});
+    prev=m;time=segmentEnd;
    }
-   secondGroups[chord]=pick(choices)||shuffle(names);
   }
-  name=secondGroups[chord][(n-4)%4];
+  events.push(barEvents);
  }
- idx[chord]=n+1;
- let mode=$('gs-mode').value;
- // Never repeat the same sounding pitch at successive attacks, including across bars.
- // Prefer the selected pitch cell; if its only available octave repeats, use another cell tone.
- let candidateName=name;
- if(noteCandidates(candidateName).every(p=>p===prev)){
-   const alternatives=D.pitch[chord].filter(n=>noteCandidates(n).some(p=>p!==prev));
-   if(alternatives.length)candidateName=pick(alternatives);
- }
- // Direction applies to every note, not just the first note of a cell.
- const cellStart=n%4===0;
- if(cellStart){
-  const setting=$('gs-direction')?.value||'random';
-  cellDirection=setting==='alternating'?(cellIndex%2?'descending':'ascending'):
-   setting==='random'?pick(['ascending','descending']):setting;
-  cellIndex++;
- }
- let m=directionalPitch(candidateName,prev,cellDirection||'ascending',mode,cellStart);
- if(mode==='triadic'||mode==='quartal'){const candidates=noteCandidates(name);if(mode==='quartal'&&prev!=null){const rank=n=>{const d=Math.abs(n-prev);return d===5?0:d===6?1:2+Math.abs(d-5)+(d===3||d===4?10:0);};candidates.sort((a,b)=>rank(a)-rank(b)||Math.abs(a-prev)-Math.abs(b-prev));}else{const goal=mode==='quartal'?5:4;candidates.sort((a,b)=>Math.abs(Math.abs(a-(prev??a))-goal)-Math.abs(Math.abs(b-(prev??b))-goal));}m=candidates[0];}
- barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});prev=m;time=segmentEnd;
- }}events.push(barEvents);
- }render();}
+ render();
+}
 function originalEvents(){return D.original.map((bar,i)=>bar.map(([m,start,dur])=>({bar:i,start,dur,m,chord:chordAt(i,start),name:midiName(m)})));}
 function concertEvents(){return originalMode?originalEvents():events;}
 function instrumentShift(){return Number($('gs-instrument')?.value||0);}
@@ -510,7 +513,15 @@ function watchGSSettings(){
  for(const id of ['generate','rhythms','gs-all-eighths'])$(id)?.addEventListener('click',()=>queueMicrotask(saveGSSettings));
 }
 window.addEventListener('pagehide',saveGSSettings);
-window.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===button));$('gs-mode').value=button.dataset.mode;generate(false);}));$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;saveGSSettings();generate();};$('rhythms').onclick=()=>{allEighths=false;saveGSSettings();generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;saveGSSettings();generate(false);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
+window.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===button));$('gs-mode').value=button.dataset.mode;generate(false);}));$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();
+ // Add the fifth choice without requiring changes to index.html.
+ const directionSelect=$('gs-direction');
+ if(directionSelect&&!directionSelect.querySelector('option[value="half-half"]')){
+  const option=document.createElement('option');
+  option.value='half-half';option.textContent='Half Ascending / Half Descending';
+  directionSelect.appendChild(option);
+ }
+ restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;saveGSSettings();generate();};$('rhythms').onclick=()=>{allEighths=false;saveGSSettings();generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;saveGSSettings();generate(false);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
 // Spacebar controls Play/Stop, except while editing or using a form control.
 document.addEventListener('keydown',event=>{
  if(event.code!=='Space'||event.repeat||event.altKey||event.ctrlKey||event.metaKey)return;
