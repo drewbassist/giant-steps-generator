@@ -10,19 +10,22 @@ function noteCandidates(name){let a=[];for(let oct=2;oct<=7;oct++){const m=(oct+
 function nearest(name,prev,mode){let pool=noteCandidates(name).filter(m=>m!==prev);if(!pool.length)throw Error('No available pitch in the selected range: '+name);const sorted=pool.map(m=>({m,score:prev==null?Math.abs(m-70):Math.abs(m-prev)}));sorted.sort((a,b)=>a.score-b.score);if(mode==='smooth')return sorted[0].m;if(mode==='angular')return pick(sorted.slice(0,Math.min(3,sorted.length))).m;return sorted[0].m;}
 const pairedPatterns={pair_retro_straight:['retro','straight'],pair_straight_river:['straight','river'],pair_river_enclosure:['river','enclosure'],pair_inverted_river:['inverted','river']};
 function patternNames(chord,chosenMode){let names=D.pitch[chord],mode=chosenMode||$('gs-order').value;if(mode==='random')mode=pick(Object.keys(patterns));return patterns[mode].map(i=>names[i]);}
-// Select an octave/register for the start of each four-note cell; pitch order stays intact.
-function directionalCellStart(name,prev,direction,mode){
- if(prev==null)return nearest(name,prev,mode);
+// Keep each four-note pitch-class pattern intact while moving its pitches
+// through the selected contour. Prefer a directional step at EVERY attack.
+function directionalPitch(name,prev,direction,mode,cellStart){
  const pool=noteCandidates(name).filter(m=>m!==prev);
  if(!pool.length)return nearest(name,prev,mode);
- const preferred=pool.filter(m=>direction==='ascending'?m>prev:m<prev);
- // Favor a nearby note in the chosen direction; gracefully handle range boundaries.
+ const low=Number($('fg-low').value),high=Number($('fg-high').value);
+ const preferred=prev==null?pool:pool.filter(m=>direction==='ascending'?m>prev:m<prev);
  const candidates=preferred.length?preferred:pool;
- return candidates.sort((a,b)=>Math.abs(a-prev)-Math.abs(b-prev))[0];
+ // Begin a cell with enough room for the other three notes to move in its direction.
+ const target=cellStart?(direction==='ascending'?low+(high-low)*.28:low+(high-low)*.72):prev;
+ const score=m=>Math.abs(m-target)+(cellStart&&prev!=null?Math.abs(m-prev)*.15:0);
+ return candidates.reduce((best,m)=>score(m)<score(best)?m:best,candidates[0]);
 }
 function rhythmDurations(id){const str=D.rhythms[id];let durations=[];for(const token of str.match(/Q\.|Q|E/g)||[])durations.push(token==='Q.'?1.5:token==='Q'?1:.5);if(Math.abs(durations.reduce((a,b)=>a+b,0)-4)>.01)throw Error('Invalid rhythm '+id);return durations;}
 function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:ch[0][0];}
-function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null,cellIndex=0,cellDirections={};for(let bar=0;bar<16;bar++){
+function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null,cellIndex=0,cellDirection=null;for(let bar=0;bar<16;bar++){
  const order=$('gs-order').value, pair=pairedPatterns[order];
  const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
  let durations=(allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={},secondGroups={};
@@ -51,14 +54,15 @@ function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerat
    const alternatives=D.pitch[chord].filter(n=>noteCandidates(n).some(p=>p!==prev));
    if(alternatives.length)candidateName=pick(alternatives);
  }
- let m=nearest(candidateName,prev,mode);
- // A cell begins at each group of four notes (or each new chord segment).
- if(n%4===0){
-  const setting=$('gs-direction').value;
-  const direction=setting==='alternating'?(cellIndex%2?'descending':'ascending'):setting==='random'?pick(['ascending','descending']):setting;
-  cellDirections[chord]=direction;cellIndex++;
-  m=directionalCellStart(candidateName,prev,direction,mode);
+ // Direction applies to every note, not just the first note of a cell.
+ const cellStart=n%4===0;
+ if(cellStart){
+  const setting=$('gs-direction')?.value||'random';
+  cellDirection=setting==='alternating'?(cellIndex%2?'descending':'ascending'):
+   setting==='random'?pick(['ascending','descending']):setting;
+  cellIndex++;
  }
+ let m=directionalPitch(candidateName,prev,cellDirection||'ascending',mode,cellStart);
  if(mode==='triadic'||mode==='quartal'){const candidates=noteCandidates(name);if(mode==='quartal'&&prev!=null){const rank=n=>{const d=Math.abs(n-prev);return d===5?0:d===6?1:2+Math.abs(d-5)+(d===3||d===4?10:0);};candidates.sort((a,b)=>rank(a)-rank(b)||Math.abs(a-prev)-Math.abs(b-prev));}else{const goal=mode==='quartal'?5:4;candidates.sort((a,b)=>Math.abs(Math.abs(a-(prev??a))-goal)-Math.abs(Math.abs(b-(prev??b))-goal));}m=candidates[0];}
  barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});prev=m;time=segmentEnd;
  }}events.push(barEvents);
@@ -514,4 +518,4 @@ document.addEventListener('keydown',event=>{
  if(target instanceof Element && (target.closest('input, textarea, select, button, [contenteditable]') || target.isContentEditable))return;
  event.preventDefault();
  if(!$('playPause').disabled)play();
-});$('stopPlayback').onclick=stop;$('gs-mode').onchange=()=>generate(false);$('gs-order').onchange=()=>generate(false);$('gs-original').onclick=()=>{stop();originalMode=!originalMode;$('gs-original').textContent=originalMode?'Return to Generated':'Original Melody';render();};$('gs-midi').onclick=midiExport;$('gs-wav').onclick=wavExport;$('gs-pdf').onclick=()=>window.print();generate();});
+});$('stopPlayback').onclick=stop;$('gs-mode').onchange=()=>generate(false);$('gs-order').onchange=()=>generate(false);$('gs-direction').onchange=()=>generate(false);$('gs-original').onclick=()=>{stop();originalMode=!originalMode;$('gs-original').textContent=originalMode?'Return to Generated':'Original Melody';render();};$('gs-midi').onclick=midiExport;$('gs-wav').onclick=wavExport;$('gs-pdf').onclick=()=>window.print();generate();});
