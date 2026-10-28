@@ -9,22 +9,33 @@ const patterns={straight:[0,1,2,3],retro:[3,2,1,0],inverted:[0,2,1,3],river:[3,0
 function noteCandidates(name){let a=[];for(let oct=2;oct<=7;oct++){const m=(oct+1)*12+PC[name];if(m>=Number($('fg-low').value)&&m<=Number($('fg-high').value))a.push(m);}return a;}
 const pairedPatterns={pair_retro_straight:['retro','straight'],pair_straight_river:['straight','river'],pair_river_enclosure:['river','enclosure'],pair_inverted_river:['inverted','river']};
 function patternNames(chord,chosenMode){let names=D.pitch[chord],mode=chosenMode||$('gs-order').value;if(mode==='random')mode=pick(Object.keys(patterns));return patterns[mode].map(i=>names[i]);}
-// Keep each four-note pitch-class pattern intact while moving its pitches
-// through the selected contour. Prefer a directional step at EVERY attack.
-function directionalPitch(name,prev,direction,cellStart){
- const available=noteCandidates(name);
- if(!available.length)throw Error('No available pitch in the selected range: '+name);
- // A repeated cell tone can have only one playable octave in a narrow range.
- // Preserve its pitch class rather than aborting the entire score.
- const nonRepeating=available.filter(m=>m!==prev);
- const pool=nonRepeating.length?nonRepeating:available;
- const low=Number($('fg-low').value),high=Number($('fg-high').value);
- const preferred=prev==null?pool:pool.filter(m=>direction==='ascending'?m>prev:m<prev);
- const candidates=preferred.length?preferred:pool;
- // Begin a cell with enough room for the other three notes to move in its direction.
- const target=cellStart?(direction==='ascending'?low+(high-low)*.28:low+(high-low)*.72):prev;
- const score=m=>Math.abs(m-target)+(cellStart&&prev!=null?Math.abs(m-prev)*.15:0);
- return candidates.reduce((best,m)=>score(m)<score(best)?m:best,candidates[0]);
+// Voice-lead complete four-note cells. The first pitch is selected relative
+// to the LAST pitch of the preceding cell, not to a fixed register target.
+// Search available octave placements without changing the 1235/5321 order.
+function voiceLeadCell(names,previous,direction){
+ const pools=names.map(name=>noteCandidates(name));
+ if(pools.some(pool=>!pool.length))throw Error('No playable octave for cell '+names.join('-'));
+ let best=null,bestCost=Infinity;
+ function visit(i,path,cost){
+  if(cost>=bestCost)return;
+  if(i===pools.length){best=path.slice();bestCost=cost;return;}
+  for(const pitch of pools[i]){
+   let extra=0;
+   if(i===0){
+    // The join between cells matters more than their register on the staff.
+    if(previous!=null)extra+=4*Math.abs(pitch-previous);
+   }else{
+    const step=pitch-path[i-1];
+    extra+=Math.abs(step);
+    // Keep the intended direction where the selected range permits it.
+    if(direction==='ascending'&&step<=0)extra+=8+Math.abs(step)*2;
+    if(direction==='descending'&&step>=0)extra+=8+Math.abs(step)*2;
+   }
+   visit(i+1,[...path,pitch],cost+extra);
+  }
+ }
+ visit(0,[],0);
+ return best;
 }
 function rhythmDurations(id){const str=D.rhythms[id];let durations=[];for(const token of str.match(/Q\.|Q|E/g)||[])durations.push(token==='Q.'?1.5:token==='Q'?1:.5);if(Math.abs(durations.reduce((a,b)=>a+b,0)-4)>.01)throw Error('Invalid rhythm '+id);return durations;}
 function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:ch[0][0];}
@@ -39,7 +50,7 @@ function generate(regenerateRhythms=true){
   const order=$('gs-order').value,pair=pairedPatterns[order];
   const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
   const durations=allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5);
-  let time=0,barEvents=[],seqs={},idx={},cellDirections={};
+  let time=0,barEvents=[],seqs={},idx={},cellDirections={},cellPitches={};
   for(const d of durations){
    const end=time+d;
    while(time<end-1e-6){
@@ -56,6 +67,7 @@ function generate(regenerateRhythms=true){
      // Never rotate a cell into 5123 or another permutation.
      const tones=D.pitch[chord];
      seqs[chord]=(direction==='descending'?[3,2,1,0]:[0,1,2,3]).map(i=>tones[i]);
+     cellPitches[chord]=voiceLeadCell(seqs[chord],prev,direction);
      cellIndex++;
     }
     const direction=cellDirections[chord];
@@ -63,7 +75,7 @@ function generate(regenerateRhythms=true){
     idx[chord]=n+1;
     // Preserve the exact pitch-class order, including across octave changes.
     // Never replace a requested cell tone with another pitch class.
-    const m=directionalPitch(name,prev,direction,cellStart);
+    const m=cellPitches[chord][n%4];
     barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});
     prev=m;time=segmentEnd;
    }
