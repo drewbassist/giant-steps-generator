@@ -10,9 +10,19 @@ function noteCandidates(name){let a=[];for(let oct=2;oct<=7;oct++){const m=(oct+
 function nearest(name,prev,mode){let pool=noteCandidates(name).filter(m=>m!==prev);if(!pool.length)throw Error('No available pitch in the selected range: '+name);const sorted=pool.map(m=>({m,score:prev==null?Math.abs(m-70):Math.abs(m-prev)}));sorted.sort((a,b)=>a.score-b.score);if(mode==='smooth')return sorted[0].m;if(mode==='angular')return pick(sorted.slice(0,Math.min(3,sorted.length))).m;return sorted[0].m;}
 const pairedPatterns={pair_retro_straight:['retro','straight'],pair_straight_river:['straight','river'],pair_river_enclosure:['river','enclosure'],pair_inverted_river:['inverted','river']};
 function patternNames(chord,chosenMode){let names=D.pitch[chord],mode=chosenMode||$('gs-order').value;if(mode==='random')mode=pick(Object.keys(patterns));return patterns[mode].map(i=>names[i]);}
+// Select an octave/register for the start of each four-note cell; pitch order stays intact.
+function directionalCellStart(name,prev,direction,mode){
+ if(prev==null)return nearest(name,prev,mode);
+ const pool=noteCandidates(name).filter(m=>m!==prev);
+ if(!pool.length)return nearest(name,prev,mode);
+ const preferred=pool.filter(m=>direction==='ascending'?m>prev:m<prev);
+ // Favor a nearby note in the chosen direction; gracefully handle range boundaries.
+ const candidates=preferred.length?preferred:pool;
+ return candidates.sort((a,b)=>Math.abs(a-prev)-Math.abs(b-prev))[0];
+}
 function rhythmDurations(id){const str=D.rhythms[id];let durations=[];for(const token of str.match(/Q\.|Q|E/g)||[])durations.push(token==='Q.'?1.5:token==='Q'?1:.5);if(Math.abs(durations.reduce((a,b)=>a+b,0)-4)>.01)throw Error('Invalid rhythm '+id);return durations;}
 function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:ch[0][0];}
-function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null;for(let bar=0;bar<16;bar++){
+function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);events=[];let prev=null,cellIndex=0,cellDirections={};for(let bar=0;bar<16;bar++){
  const order=$('gs-order').value, pair=pairedPatterns[order];
  const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
  let durations=(allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5)), time=0, barEvents=[],seqs={},idx={},secondGroups={};
@@ -41,7 +51,15 @@ function generate(regenerateRhythms=true){stop();originalMode=false;if(regenerat
    const alternatives=D.pitch[chord].filter(n=>noteCandidates(n).some(p=>p!==prev));
    if(alternatives.length)candidateName=pick(alternatives);
  }
- let m=nearest(candidateName,prev,mode);if(mode==='triadic'||mode==='quartal'){const candidates=noteCandidates(name);if(mode==='quartal'&&prev!=null){const rank=n=>{const d=Math.abs(n-prev);return d===5?0:d===6?1:2+Math.abs(d-5)+(d===3||d===4?10:0);};candidates.sort((a,b)=>rank(a)-rank(b)||Math.abs(a-prev)-Math.abs(b-prev));}else{const goal=mode==='quartal'?5:4;candidates.sort((a,b)=>Math.abs(Math.abs(a-(prev??a))-goal)-Math.abs(Math.abs(b-(prev??b))-goal));}m=candidates[0];}
+ let m=nearest(candidateName,prev,mode);
+ // A cell begins at each group of four notes (or each new chord segment).
+ if(n%4===0){
+  const setting=$('gs-direction').value;
+  const direction=setting==='alternating'?(cellIndex%2?'descending':'ascending'):setting==='random'?pick(['ascending','descending']):setting;
+  cellDirections[chord]=direction;cellIndex++;
+  m=directionalCellStart(candidateName,prev,direction,mode);
+ }
+ if(mode==='triadic'||mode==='quartal'){const candidates=noteCandidates(name);if(mode==='quartal'&&prev!=null){const rank=n=>{const d=Math.abs(n-prev);return d===5?0:d===6?1:2+Math.abs(d-5)+(d===3||d===4?10:0);};candidates.sort((a,b)=>rank(a)-rank(b)||Math.abs(a-prev)-Math.abs(b-prev));}else{const goal=mode==='quartal'?5:4;candidates.sort((a,b)=>Math.abs(Math.abs(a-(prev??a))-goal)-Math.abs(Math.abs(b-(prev??b))-goal));}m=candidates[0];}
  barEvents.push({bar,start:time,dur:segmentEnd-time,m,chord,name});prev=m;time=segmentEnd;
  }}events.push(barEvents);
  }render();}
@@ -454,7 +472,7 @@ async function wavExport(){const bpm=Number($('tempo').value)||80,beat=60/bpm,sr
 function setupFavorites(){const key='giant-steps-favorites-v1';const load=()=>JSON.parse(localStorage.getItem(key)||'[]');const refresh=()=>{let select=$('fg-load');select.innerHTML='<option value="">Load Favorite…</option>';load().forEach((x,i)=>{let o=document.createElement('option');o.value=i;o.textContent=x.name;select.appendChild(o)});select.disabled=!load().length;$('fg-delete').disabled=!load().length;};$('fg-auth-status').textContent='Favorites: saved in this browser';$('fg-sign-in').hidden=true;$('fg-sign-out').hidden=true;$('fg-save').disabled=false;$('fg-save').onclick=()=>{let arr=load(),name=prompt('Favorite name','Giant Steps '+(arr.length+1));if(!name)return;arr.push({name,rhythmIds,events,originalMode,allEighths,clef:$('gs-clef').value,instrument:$('gs-instrument').value});localStorage.setItem(key,JSON.stringify(arr));refresh();};$('fg-load').onchange=e=>{let x=load()[Number(e.target.value)];if(!x)return;rhythmIds=x.rhythmIds;events=x.events;originalMode=x.originalMode;allEighths=!!x.allEighths;$('gs-clef').value=x.clef||'treble';$('gs-instrument').value=x.instrument||'0';render();};$('fg-delete').onclick=()=>{let idx=Number($('fg-load').value);if(!$('fg-load').value)return;let arr=load();arr.splice(idx,1);localStorage.setItem(key,JSON.stringify(arr));refresh();};refresh();}
 // Remember interface preferences, but generate fresh notes on every page load.
 const GS_SETTINGS_KEY='giant-steps-settings-v1';
-const GS_SAVED_CONTROLS=['gs-mode','gs-order','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
+const GS_SAVED_CONTROLS=['gs-mode','gs-order','gs-direction','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
 function saveGSSettings(){
  try{
   const settings={allEighths};
