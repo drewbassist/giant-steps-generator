@@ -12,11 +12,12 @@ function patternNames(chord,chosenMode){let names=D.pitch[chord],mode=chosenMode
 // Rotate the intact 1-2-3-5 pitch-class cell to start on the closest
 // available degree (1, 2, 3 or 5). Direction determines the traversal;
 // octave placement must follow that direction within the selected range.
-function voiceLeadCell(tones,previous,direction){
+function voiceLeadCell(tones,previous,direction,avoidNames=null){
  const order=direction==='descending'?[3,2,1,0]:[0,1,2,3];
  let best=null,bestCost=Infinity;
  for(let rotation=0;rotation<4;rotation++){
   const names=Array.from({length:4},(_,i)=>tones[order[(rotation+i)%4]]);
+  if(avoidNames&&names.every((name,i)=>name===avoidNames[i]))continue;
   const pools=names.map(noteCandidates);
   if(pools.some(pool=>!pool.length))continue;
   function visit(i,path){
@@ -72,7 +73,7 @@ function generate(regenerateRhythms=true){
   const order=$('gs-order').value,pair=pairedPatterns[order];
   const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
   const durations=allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5);
-  let time=0,barEvents=[],seqs={},idx={},cellDirections={},cellPitches={};
+  let time=0,barEvents=[],seqs={},idx={},cellDirections={},cellPitches={},previousCellNames={};
   for(const d of durations){
    const end=time+d;
    while(time<end-1e-6){
@@ -87,7 +88,10 @@ function generate(regenerateRhythms=true){
      cellDirections[chord]=direction;
      // Choose the smoothest of four cyclic rotations of 1235 or 5321.
      // The starting degree may be 1, 2, 3 or 5.
-     const cell=voiceLeadCell(D.pitch[chord],prev,direction);
+     // If the same harmony receives a second cell in this bar, forbid
+     // an identical four-note rotation while retaining smooth voice leading.
+     const cell=voiceLeadCell(D.pitch[chord],prev,direction,previousCellNames[chord]||null);
+     previousCellNames[chord]=cell.names.slice();
      seqs[chord]=cell.names;
      cellPitches[chord]=cell.pitches;
      cellIndex++;
