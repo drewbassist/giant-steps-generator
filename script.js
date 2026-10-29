@@ -637,7 +637,7 @@ function watchGSSettings(){
   el.addEventListener('change',saveGSSettings);
   el.addEventListener('input',saveGSSettings);
  }
- for(const id of ['generate','rhythms','gs-all-eighths','gs-goodrick'])$(id)?.addEventListener('click',()=>queueMicrotask(saveGSSettings));
+ for(const id of ['generate','rhythms','gs-all-eighths'])$(id)?.addEventListener('click',()=>queueMicrotask(saveGSSettings));
 }
 window.addEventListener('pagehide',saveGSSettings);
 window.addEventListener('DOMContentLoaded',()=>{$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();
@@ -648,7 +648,7 @@ window.addEventListener('DOMContentLoaded',()=>{$('tempo').addEventListener('inp
   option.value='half-half';option.textContent='Half Ascending / Half Descending';
   directionSelect.appendChild(option);
  }
- restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;goodrickMode=false;saveGSSettings();generate();};$('rhythms').onclick=()=>{allEighths=false;goodrickMode=false;saveGSSettings();generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;goodrickMode=false;saveGSSettings();generate(false);};$('gs-goodrick').onclick=()=>{goodrickMode=true;allEighths=false;saveGSSettings();generate(true);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
+ restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;goodrickMode=false;saveGSSettings();generate();};$('rhythms').onclick=()=>{allEighths=false;goodrickMode=true;saveGSSettings();generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;goodrickMode=false;saveGSSettings();generate(false);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
 // Spacebar controls Play/Stop, except while editing or using a form control.
 document.addEventListener('keydown',event=>{
  if(event.code!=='Space'||event.repeat||event.altKey||event.ctrlKey||event.metaKey)return;
