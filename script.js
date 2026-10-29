@@ -34,12 +34,7 @@ const GOODRICK_RHYTHMS=[
 // Goodrick boundary rhythms 10–15 are placed as a contiguous group so
 // their incoming and outgoing ties have matching neighboring patterns.
 function goodrickSequence(){
- const ids=shuffle([9,10,11,12,13,14]);
- const start=Math.floor(Math.random()*11); // six contiguous measures in sixteen
- const result=Array(16).fill(null);
- ids.forEach((id,j)=>result[start+j]=id);
- const rest=shuffle(Array.from({length:24},(_,i)=>i).filter(i=>i<9||i>14)).slice(0,10);
- let k=0;return result.map(id=>id===null?rest[k++]:id);
+ return shuffle(Array.from({length:24},(_,i)=>i)).slice(0,16);
 }
 function goodrickBoundary(id){return id>=9&&id<=14;}
 function goodrickTieEvents(){
@@ -49,7 +44,7 @@ function goodrickTieEvents(){
   // Mark tied segments; a subsequent pass coalesces them into one sustained
   // MIDI/audio event while the engraving keeps both noteheads.
   for(const index of ties){if(ev[index]&&ev[index+1]&&Math.abs(ev[index].start+ev[index].dur-ev[index+1].start)<1e-6){ev[index+1].m=ev[index].m;ev[index+1].name=ev[index].name;ev[index].tieOut=true;ev[index+1].tieIn=true;}}
-  if(b<15&&goodrickBoundary(rhythmIds[b])&&goodrickBoundary(rhythmIds[b+1])){
+  if(b<15 && /~\s*$/.test(GOODRICK_RHYTHMS[rhythmIds[b]][1]) && /^~/.test(GOODRICK_RHYTHMS[rhythmIds[b+1]][1])){
    const last=ev.at(-1),first=events[b+1][0];
    if(last&&first){first.m=last.m;first.name=last.name;last.tieOut=true;first.tieIn=true;}
   }
@@ -510,7 +505,7 @@ async function play(){
  if(token!==playToken)return;
  $('transport-status').textContent='Loading sounds…';$('playPause').disabled=true;
  const beat=60/Math.max(40,Math.min(240,Number($('tempo').value)||80));
- const melody=concertEvents().flat();
+ const melody=originalMode?concertEvents().flat():sustainedEvents();
  let chords;
  try { chords=accompanimentChords(); if(!chords.length)throw Error('No accompaniment chords generated'); }
  catch(err){ console.error('Accompaniment generation failed:',err); $('transport-status').textContent='Accompaniment error: '+err.message; return; }
@@ -564,7 +559,7 @@ async function play(){
   }
  }
  const jobs=[];for(let pass=0;pass<2;pass++){
- for(let e of (originalMode?melody:sustainedEvents()))jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,.5));
+ for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,.5));
  for(const chord of chords){
   const when=start+(pass*64+chord.start)*beat;
   const duration=Math.max(.10,chord.dur*beat);
