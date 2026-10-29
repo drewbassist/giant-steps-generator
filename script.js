@@ -224,13 +224,24 @@ function abcBar(bar){
   // Spell notes against the *displayed* G-flat dominant harmony with flats.
   // Only the engraving changes; event MIDI pitches and playback remain intact.
   const writtenChord=transposeChord(e.chord,instrumentShift());
-  if(writtenChord==='Gb7'){
+  if(writtenChord==='Gb7' && bar!==11 && bar!==15){
    const flatSpelling={1:'Db',3:'Eb',4:'Fb',6:'Gb',8:'Ab',10:'Bb'};
    const name=flatSpelling[e.m%12];
    if(name){
     const octave=Math.floor(e.m/12)-1;
     const letter=name[0],acc=name[1]==='b'?'_':'';
     spelledPitch=acc+(octave>=5?letter.toLowerCase()+"'".repeat(octave-5):letter+','.repeat(4-octave));
+   }
+  }
+  // Measures 12 and 16: use sharp enharmonics throughout C#m7 -> F#7.
+  // Engraving only: MIDI pitch, octave, duration, and event data stay intact.
+  // Incoming ties are applied below and take precedence over this preference.
+  if(instrumentShift()===0 && (bar===11 || bar===15)){
+   const sharpNames={1:'C',3:'D',6:'F',8:'G',10:'A'};
+   const letter=sharpNames[((e.m%12)+12)%12];
+   if(letter){
+    const octave=Math.floor(e.m/12)-1;
+    spelledPitch='^'+(octave>=5?letter.toLowerCase()+"'".repeat(octave-5):letter+','.repeat(4-octave));
    }
   }
   // Keep the source note's staff position and enharmonic spelling across ties.
