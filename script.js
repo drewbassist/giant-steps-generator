@@ -229,6 +229,14 @@ function abcBar(bar){
     spelledPitch=acc+(octave>=5?letter.toLowerCase()+"'".repeat(octave-5):letter+','.repeat(4-octave));
    }
   }
+  // A tie is a continuation of the source note, not a new chord-cell note.
+  // Preserve its exact written pitch across chord and barline changes.
+  if(e.tieIn && e.tieSpelling) spelledPitch=e.tieSpelling;
+  if(e.tieOut){
+   const next=ev.find(n=>n.tieIn && Math.abs(n.start-(e.start+e.dur))<1e-6)
+     || activeEvents()[bar+1]?.find(n=>n.tieIn && Math.abs(n.start)<1e-6);
+   if(next) next.tieSpelling=spelledPitch;
+  }
   const pitchParts=/^([_=^]?)([A-Ga-g][,']*)$/.exec(spelledPitch);
   if(pitchParts){
    const [, accidental, staffPitch]=pitchParts;
