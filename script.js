@@ -196,6 +196,7 @@ function transposeChord(symbol,shift){
 }
 function midiName(m){return ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'][m%12]+(Math.floor(m/12)-1);}
 function abcPitch(m){const p=['C','^C','D','_E','E','F','^F','G','_A','A','_B','B'][m%12],oct=Math.floor(m/12)-1;let base=p;if(oct>=5)base=base.replace(/[A-G]/,s=>s.toLowerCase())+"'".repeat(Math.max(0,oct-5));else base+=','.repeat(Math.max(0,4-oct));return base;}
+let gsTieSpellings=new Map();
 function abcBar(bar){
  const ev=activeEvents()[bar];let abc='',t=0;
  // Accidentals apply to the same staff pitch only within this measure.
@@ -229,21 +230,30 @@ function abcBar(bar){
     spelledPitch=acc+(octave>=5?letter.toLowerCase()+"'".repeat(octave-5):letter+','.repeat(4-octave));
    }
   }
-  // A tie is a continuation of the source note, not a new chord-cell note.
-  // Preserve its exact written pitch across chord and barline changes.
-  if(e.tieIn && e.tieSpelling) spelledPitch=e.tieSpelling;
+  // Keep the source note's staff position and enharmonic spelling across ties.
+  // The map is shared across measures within a single rendering pass.
+  const eventKey=bar+':'+e.start.toFixed(6);
+  if(e.tieIn && gsTieSpellings.has(eventKey))spelledPitch=gsTieSpellings.get(eventKey);
+  const parts=/^([_=^]?)([A-Ga-g][,']*)$/.exec(spelledPitch);
+  if(parts){
+   const [,requested,staff]=parts;
+   const effective=requested||'=';
+   const current=accidentalsInBar.get(staff)||'='; // K:C has no sharps or flats.
+   // Do not print an accidental twice unless the pitch was altered in between.
+   // A continuation of a tie does not need a new accidental at a barline.
+   const printAccidental=e.tieIn&&gsTieSpellings.has(eventKey)?'':
+     (effective===current?'':effective);
+   spelledPitch=printAccidental+staff;
+   accidentalsInBar.set(staff,effective);
+  }
   if(e.tieOut){
    const next=ev.find(n=>n.tieIn && Math.abs(n.start-(e.start+e.dur))<1e-6)
      || activeEvents()[bar+1]?.find(n=>n.tieIn && Math.abs(n.start)<1e-6);
-   if(next) next.tieSpelling=spelledPitch;
-  }
-  const pitchParts=/^([_=^]?)([A-Ga-g][,']*)$/.exec(spelledPitch);
-  if(pitchParts){
-   const [, accidental, staffPitch]=pitchParts;
-   if(!accidental && accidentalsInBar.has(staffPitch) && accidentalsInBar.get(staffPitch)!=='=')
-    spelledPitch='='+staffPitch;
-   if(accidental || spelledPitch[0]==='=')
-    accidentalsInBar.set(staffPitch,spelledPitch[0]);
+   if(next){
+    // Store the *full spelling*, not the accidental suppressed for display.
+    const full=parts?(parts[1]||'=')+parts[2]:spelledPitch;
+    gsTieSpellings.set(next.bar+':'+next.start.toFixed(6),full);
+   }
   }
   // Explicit beam boundaries: eighths form groups within each half-measure.
   // Never introduce a beam break solely because the harmony changes.
@@ -261,6 +271,7 @@ function abcBar(bar){
  return (bar===0?'|: ':'')+abc+(bar===15?' :|':' |');
 }
 function render(){
+ gsTieSpellings=new Map();
  let s=$('score');s.innerHTML='';
  for(let group=0;group<4;group++){
   const div=document.createElement('div');
