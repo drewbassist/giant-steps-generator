@@ -30,6 +30,8 @@ function voiceLeadCell(tones,previous,direction,avoidNames=null){
     return;
    }
    for(const pitch of pools[i]){
+    // A cell may not begin on the exact pitch that ended the previous cell.
+    if(i===0&&previous!=null&&pitch===previous)continue;
     if(i){
      const step=pitch-path[i-1];
      if(direction==='ascending'&&step<=0)continue;
@@ -46,13 +48,17 @@ function voiceLeadCell(tones,previous,direction,avoidNames=null){
  if(!best){
   for(let rotation=0;rotation<4;rotation++){
    const names=Array.from({length:4},(_,i)=>tones[order[(rotation+i)%4]]);
+   if(avoidNames&&names.every((name,i)=>name===avoidNames[i]))continue;
    const pools=names.map(noteCandidates);
    if(pools.some(pool=>!pool.length))continue;
    const pitches=[];let last=previous;
    for(const pool of pools){
-    const candidate=pool.reduce((a,p)=>Math.abs(p-(last??70))<Math.abs(a-(last??70))?p:a,pool[0]);
+    const available=pitches.length===0&&previous!=null?pool.filter(p=>p!==previous):pool;
+    if(!available.length){pitches.length=0;break;}
+    const candidate=available.reduce((a,p)=>Math.abs(p-(last??70))<Math.abs(a-(last??70))?p:a,available[0]);
     pitches.push(candidate);last=candidate;
    }
+   if(pitches.length!==4)continue;
    const cost=(previous==null?0:4*Math.abs(pitches[0]-previous))+pitches.slice(1).reduce((s,p,i)=>s+Math.abs(p-pitches[i]),0);
    if(cost<bestCost){bestCost=cost;best={names,pitches};}
   }
