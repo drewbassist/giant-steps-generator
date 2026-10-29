@@ -37,16 +37,40 @@ function goodrickSequence(){
  return shuffle(Array.from({length:24},(_,i)=>i)).slice(0,16);
 }
 function goodrickBoundary(id){return id>=9&&id<=14;}
+// A Goodrick tie is valid only if its sustained pitch is in the permitted
+// 1-2-3-5 cell of every harmony it crosses. Otherwise both attacks remain.
+function pitchAllowedForChord(m,chord){
+ return D.pitch[chord].some(name=>PC[name]===((m%12)+12)%12);
+}
+function canTieGoodrick(from,to){
+ if(!from||!to||Math.abs(from.bar*4+from.start+from.dur-(to.bar*4+to.start))>1e-6)return false;
+ const start=from.bar*4+from.start,end=to.bar*4+to.start+to.dur;
+ // Check the destination harmony, and every change within either segment.
+ for(let b=Math.floor(start/4);b<=Math.min(15,Math.floor((end-1e-8)/4));b++){
+  for(const [chord,offset] of D.bars[b]){
+   const change=b*4+offset;
+   if(change>=start-1e-8&&change<end-1e-8&&!pitchAllowedForChord(from.m,chord))return false;
+  }
+  const segmentStart=Math.max(start,b*4);
+  if(segmentStart<end-1e-8&&!pitchAllowedForChord(from.m,chordAt(b,segmentStart-b*4)))return false;
+ }
+ return true;
+}
 function goodrickTieEvents(){
  if(!goodrickMode)return;
  for(let b=0;b<16;b++){
   const ev=events[b],ties=GOODRICK_INTERNAL_TIES[rhythmIds[b]+1]||[];
-  // Mark tied segments; a subsequent pass coalesces them into one sustained
-  // MIDI/audio event while the engraving keeps both noteheads.
-  for(const index of ties){if(ev[index]&&ev[index+1]&&Math.abs(ev[index].start+ev[index].dur-ev[index+1].start)<1e-6){ev[index+1].m=ev[index].m;ev[index+1].name=ev[index].name;ev[index].tieOut=true;ev[index+1].tieIn=true;}}
+  for(const index of ties){
+   const from=ev[index],to=ev[index+1];
+   if(canTieGoodrick(from,to)){
+    to.m=from.m;to.name=from.name;from.tieOut=true;to.tieIn=true;
+   }
+  }
   if(b<15 && /~\s*$/.test(GOODRICK_RHYTHMS[rhythmIds[b]][1]) && /^~/.test(GOODRICK_RHYTHMS[rhythmIds[b+1]][1])){
    const last=ev.at(-1),first=events[b+1][0];
-   if(last&&first){first.m=last.m;first.name=last.name;last.tieOut=true;first.tieIn=true;}
+   if(canTieGoodrick(last,first)){
+    first.m=last.m;first.name=last.name;last.tieOut=true;first.tieIn=true;
+   }
   }
  }
 }
