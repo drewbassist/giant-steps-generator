@@ -3,7 +3,75 @@
 const D=GS_DATA, PC={C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11};
 const $=id=>document.getElementById(id), rnd=n=>Math.floor(Math.random()*n), pick=a=>a[rnd(a.length)];
 const shuffle=a=>{a=[...a];for(let i=a.length-1;i>0;i--){let j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;};
-let allEighths=false;
+let allEighths=false,goodrickMode=false;
+const GOODRICK_RHYTHMS=[
+["Rhythm 1","Q · EE · EE · Q"],
+["Rhythm 2","Q · EE · E · Q · E"],
+["Rhythm 3","Q · EE~E · E · E · E"],
+["Rhythm 4","EE · Q · E · Q · E"],
+["Rhythm 5","EE · Q~E · E · E · E"],
+["Rhythm 6","EE · Q · Q · EE"],
+["Rhythm 7","E · Q · E~E · E · E · E"],
+["Rhythm 8","E · Q · E · Q · EE"],
+["Rhythm 9","E · Q · E · EE · Q"],
+["Rhythm 10","~EEEE · Q · EE~"],
+["Rhythm 11","~EEEE · EE · Q~"],
+["Rhythm 12","~EEEE · E · Q · E~"],
+["Rhythm 13","~E · Q · E · EEEE~"],
+["Rhythm 14","~Q · EE · EEEE~"],
+["Rhythm 15","~EE · Q · EEEE~"],
+["Rhythm 16","Q · Q · EEEE"],
+["Rhythm 17","EEEE · Q. · E"],
+["Rhythm 18","Q. · E · EEEE"],
+["Rhythm 19","EEEE · Q · Q"],
+["Rhythm 20","E · Q. · EEEE"],
+["Rhythm 21","EEEE · E · Q."],
+["Rhythm 22","EEEE~E · E · Q"],
+["Rhythm 23","EEEE · E~Q · E"],
+["Rhythm 24","EEEE · E~Q · E"]
+];
+
+// Goodrick boundary rhythms 10–15 are placed as a contiguous group so
+// their incoming and outgoing ties have matching neighboring patterns.
+function goodrickSequence(){
+ const ids=shuffle([9,10,11,12,13,14]);
+ const start=Math.floor(Math.random()*11); // six contiguous measures in sixteen
+ const result=Array(16).fill(null);
+ ids.forEach((id,j)=>result[start+j]=id);
+ const rest=shuffle(Array.from({length:24},(_,i)=>i).filter(i=>i<9||i>14)).slice(0,10);
+ let k=0;return result.map(id=>id===null?rest[k++]:id);
+}
+function goodrickBoundary(id){return id>=9&&id<=14;}
+function goodrickTieEvents(){
+ if(!goodrickMode)return;
+ for(let b=0;b<16;b++){
+  const ev=events[b],ties=GOODRICK_INTERNAL_TIES[rhythmIds[b]+1]||[];
+  // Mark tied segments; a subsequent pass coalesces them into one sustained
+  // MIDI/audio event while the engraving keeps both noteheads.
+  for(const index of ties){if(ev[index]&&ev[index+1]&&Math.abs(ev[index].start+ev[index].dur-ev[index+1].start)<1e-6){ev[index+1].m=ev[index].m;ev[index+1].name=ev[index].name;ev[index].tieOut=true;ev[index+1].tieIn=true;}}
+  if(b<15&&goodrickBoundary(rhythmIds[b])&&goodrickBoundary(rhythmIds[b+1])){
+   const last=ev.at(-1),first=events[b+1][0];
+   if(last&&first){first.m=last.m;first.name=last.name;last.tieOut=true;first.tieIn=true;}
+  }
+ }
+}
+function sustainedEvents(){
+ const flat=concertEvents().flat().map(e=>({...e}));const out=[];
+ for(const e of flat){if(e.tieIn&&out.length&&out.at(-1).tieOut&&out.at(-1).m===e.m&&Math.abs(out.at(-1).bar*4+out.at(-1).start+out.at(-1).dur-(e.bar*4+e.start))<1e-6){out.at(-1).dur+=e.dur;out.at(-1).tieOut=e.tieOut;}else out.push(e);}
+ return out;
+}
+const GOODRICK_INTERNAL_TIES={3:[2],5:[2],7:[2],22:[3],23:[4],24:[4]};
+function goodrickDurations(id){
+ const tokens=GOODRICK_RHYTHMS[id][1].replace(/~/g,' · ').split('·').map(x=>x.trim()).filter(Boolean);
+ const durations=[];for(const token of tokens){
+  if(token==='E')durations.push(.5);else if(token==='EE')durations.push(.5,.5);
+  else if(token==='EEEE')durations.push(.5,.5,.5,.5);
+  else if(token==='Q')durations.push(1);else if(token==='Q.')durations.push(1.5);
+ }
+ if(Math.abs(durations.reduce((a,b)=>a+b,0)-4)>1e-6)throw Error('Invalid Goodrick rhythm '+(id+1));
+ return durations;
+}
+
 let events=[],rhythmIds=[],originalMode=false,playing=false,ctx=null,sources=[],stopTimer=null,bufferCache=new Map(),selectedFavorite=null;
 const patterns={straight:[0,1,2,3],retro:[3,2,1,0],inverted:[0,2,1,3],river:[3,0,1,2],enclosure:[1,0,2,3]};
 function noteCandidates(name){let a=[];for(let oct=2;oct<=7;oct++){const m=(oct+1)*12+PC[name];if(m>=Number($('fg-low').value)&&m<=Number($('fg-high').value))a.push(m);}return a;}
@@ -70,7 +138,7 @@ function rhythmDurations(id){const str=D.rhythms[id];let durations=[];for(const 
 function chordAt(bar,t){const ch=D.bars[bar];return ch.length>1&&t>=2?ch[1][0]:ch[0][0];}
 function generate(regenerateRhythms=true){
  stop();originalMode=false;
- if(regenerateRhythms||!rhythmIds.length)rhythmIds=Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);
+ if(regenerateRhythms||rhythmIds.length!==16)rhythmIds=goodrickMode?goodrickSequence():Array.from({length:16},(_,bar)=>[2,6,8,10,12,14].includes(bar)?pick([1,2]):0);
  events=[];let prev=null,cellIndex=0;
  // Exactly 32 cells per chart: two per measure, including partial cells.
  // Half & Half uses 16 ascending and 16 descending cells in shuffled order.
@@ -78,7 +146,7 @@ function generate(regenerateRhythms=true){
  for(let bar=0;bar<16;bar++){
   const order=$('gs-order').value,pair=pairedPatterns[order];
   const selectedModes=pair?(D.bars[bar].length===2?pair:[pick(pair)]):null;
-  const durations=allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5);
+  const durations=goodrickMode?goodrickDurations(rhythmIds[bar]):allEighths?Array(8).fill(.5):[2,6,8,10,12,14].includes(bar)?(rhythmIds[bar]===2?[2,.5,.5,.5,.5]:[1,.5,.5,.5,.5,.5,.5]):Array(8).fill(.5);
   let time=0,barEvents=[],seqs={},idx={},cellDirections={},cellPitches={},previousCellNames={};
   for(const d of durations){
    const end=time+d;
@@ -114,6 +182,7 @@ function generate(regenerateRhythms=true){
   }
   events.push(barEvents);
  }
+ goodrickTieEvents();
  render();
 }
 function originalEvents(){return D.original.map((bar,i)=>bar.map(([m,start,dur])=>({bar:i,start,dur,m,chord:chordAt(i,start),name:midiName(m)})));}
@@ -182,7 +251,7 @@ function abcBar(bar){
   const nextFirst=D.original[bar+1]?.[0];
   const crossTie=originalMode&&crossBarTies.has(bar)&&endOfBar&&nextFirst&&nextFirst[0]===e.m;
   const internalTie=originalMode&&bar===3&&Math.abs(e.start-1.5)<.001&&ev.find(x=>x.start===2)?.m===e.m;
-  abc+=(groupStart?' ':'')+chordLabel+spelledPitch+(duration===1?'':duration)+((crossTie||internalTie)?'-':'');
+  abc+=(groupStart?' ':'')+chordLabel+spelledPitch+(duration===1?'':duration)+((crossTie||internalTie||e.tieOut)?'-':'');
   t=e.start+e.dur;
  }
  if(t<4)abc+=' z'+Math.round((4-t)*2);
@@ -229,7 +298,7 @@ function render(){
   number.style.cssText='position:absolute;left:12px;top:0;font-size:12px;font-weight:600;color:#222;pointer-events:none;';
   div.appendChild(number);
  }
-let out=$('output');out.replaceChildren();activeEvents().forEach((bar,i)=>{let tr=document.createElement('tr');let ch=D.bars[i].map(x=>x[0]).join(' → ');[i+1,ch,(allEighths?'All 8ths':'Rhythm '+(rhythmIds[i]+1||1)),(allEighths?'EEEE · EEEE':[2,6,8,10,12,14].includes(i)?(rhythmIds[i]===2?'H · EEEE':'Q · EEEEEE'):'EEEE · EEEE'),D.bars[i].map(x=>D.pitch[x[0]].join(' ')).join(' / '),bar.map(e=>midiName(e.m)).join(' · ')].forEach(x=>{let td=document.createElement('td');td.textContent=x;tr.appendChild(td)});out.appendChild(tr);});}
+let out=$('output');out.replaceChildren();activeEvents().forEach((bar,i)=>{let tr=document.createElement('tr');let ch=D.bars[i].map(x=>x[0]).join(' → ');[i+1,ch,(goodrickMode?'Goodrick '+(rhythmIds[i]+1):allEighths?'All 8ths':'Rhythm '+(rhythmIds[i]+1||1)),(goodrickMode?GOODRICK_RHYTHMS[rhythmIds[i]][1]:allEighths?'EEEE · EEEE':[2,6,8,10,12,14].includes(i)?(rhythmIds[i]===2?'H · EEEE':'Q · EEEEEE'):'EEEE · EEEE'),D.bars[i].map(x=>D.pitch[x[0]].join(' ')).join(' / '),bar.map(e=>midiName(e.m)).join(' · ')].forEach(x=>{let td=document.createElement('td');td.textContent=x;tr.appendChild(td)});out.appendChild(tr);});}
 function setupRange(){let names=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];for(let m=40;m<=96;m++)for(let id of ['fg-low','fg-high']){let o=document.createElement('option');o.value=m;o.textContent=names[m%12]+(Math.floor(m/12)-1);$(id).appendChild(o);} $('fg-low').value=60;$('fg-high').value=79;for(let id of ['fg-low','fg-high'])$(id).onchange=()=>{if(Number($('fg-low').value)>=Number($('fg-high').value))return;generate(false)};}
 // Sample libraries have different coverage: Rhodes is sampled sparsely, piano chromatically.
 // Select the nearest existing recording and transpose it to the requested MIDI pitch.
@@ -495,7 +564,7 @@ async function play(){
   }
  }
  const jobs=[];for(let pass=0;pass<2;pass++){
- for(let e of melody)jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,.5));
+ for(let e of (originalMode?melody:sustainedEvents()))jobs.push(schedule(e.m,pass*64+e.bar*4+e.start,e.dur,melSound,.5));
  for(const chord of chords){
   const when=start+(pass*64+chord.start)*beat;
   const duration=Math.max(.10,chord.dur*beat);
@@ -519,16 +588,16 @@ async function play(){
  }
  if(token===playToken)stopTimer=setTimeout(stop,128*beat*1000+300);
 }
-function midiExport(){const ppq=480,track=[],ev=[];const add=(tick,bytes)=>ev.push([tick,bytes]);for(let bar of concertEvents())for(let e of bar){let t=Math.round((e.bar*4+e.start)*ppq),end=t+Math.round(e.dur*ppq);add(t,[0x90,e.m,94]);add(end,[0x80,e.m,0]);}ev.sort((a,b)=>a[0]-b[0]||a[1][0]-b[1][0]);const varlen=n=>{let out=[n&127];while(n>>=7)out.unshift((n&127)|128);return out};let prev=0;for(let [t,msg]of ev){track.push(...varlen(t-prev),...msg);prev=t;}track.push(0,0xff,0x2f,0);const u32=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];const tempo=Math.round(60000000/Number($('tempo').value||80));const meta=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255,0,0xff,0x2f,0];const bytes=[...Array.from('MThd',x=>x.charCodeAt(0)),0,0,0,6,0,1,0,2,1,224,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(meta.length),...meta,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(track.length),...track];download(new Blob([new Uint8Array(bytes)],{type:'audio/midi'}),'giant-steps.mid');}
+function midiExport(){const ppq=480,track=[],ev=[];const add=(tick,bytes)=>ev.push([tick,bytes]);for(let e of sustainedEvents()){let t=Math.round((e.bar*4+e.start)*ppq),end=t+Math.round(e.dur*ppq);add(t,[0x90,e.m,94]);add(end,[0x80,e.m,0]);}ev.sort((a,b)=>a[0]-b[0]||a[1][0]-b[1][0]);const varlen=n=>{let out=[n&127];while(n>>=7)out.unshift((n&127)|128);return out};let prev=0;for(let [t,msg]of ev){track.push(...varlen(t-prev),...msg);prev=t;}track.push(0,0xff,0x2f,0);const u32=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];const tempo=Math.round(60000000/Number($('tempo').value||80));const meta=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255,0,0xff,0x2f,0];const bytes=[...Array.from('MThd',x=>x.charCodeAt(0)),0,0,0,6,0,1,0,2,1,224,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(meta.length),...meta,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(track.length),...track];download(new Blob([new Uint8Array(bytes)],{type:'audio/midi'}),'giant-steps.mid');}
 function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
-async function wavExport(){const bpm=Number($('tempo').value)||80,beat=60/bpm,sr=22050,length=Math.ceil((64*beat+1)*sr),offline=new OfflineAudioContext(1,length,sr);const notes=concertEvents().flat();for(let e of notes){let start=(e.bar*4+e.start)*beat,dur=e.dur*beat;let osc=offline.createOscillator(),gain=offline.createGain();osc.type='sine';osc.frequency.value=440*2**((e.m-69)/12);gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(.15*Number($('gs-melvol').value),start+.02);gain.gain.setValueAtTime(.13*Number($('gs-melvol').value),start+Math.max(.021,dur-.04));gain.gain.linearRampToValueAtTime(0,start+dur);osc.connect(gain).connect(offline.destination);osc.start(start);osc.stop(start+dur+.01)}let buf=await offline.startRendering(),f=buf.getChannelData(0),wav=new ArrayBuffer(44+f.length*2),view=new DataView(wav);const str=(off,s)=>{for(let i=0;i<s.length;i++)view.setUint8(off+i,s.charCodeAt(i))};str(0,'RIFF');view.setUint32(4,36+f.length*2,true);str(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);str(36,'data');view.setUint32(40,f.length*2,true);for(let i=0;i<f.length;i++)view.setInt16(44+i*2,Math.max(-32768,Math.min(32767,Math.round(f[i]*32767))),true);download(new Blob([wav],{type:'audio/wav'}),'giant-steps.wav');}
-function setupFavorites(){const key='giant-steps-favorites-v1';const load=()=>JSON.parse(localStorage.getItem(key)||'[]');const refresh=()=>{let select=$('fg-load');select.innerHTML='<option value="">Load Favorite…</option>';load().forEach((x,i)=>{let o=document.createElement('option');o.value=i;o.textContent=x.name;select.appendChild(o)});select.disabled=!load().length;$('fg-delete').disabled=!load().length;};$('fg-auth-status').textContent='Favorites: saved in this browser';$('fg-sign-in').hidden=true;$('fg-sign-out').hidden=true;$('fg-save').disabled=false;$('fg-save').onclick=()=>{let arr=load(),name=prompt('Favorite name','Giant Steps '+(arr.length+1));if(!name)return;arr.push({name,rhythmIds,events,originalMode,allEighths,clef:$('gs-clef').value,instrument:$('gs-instrument').value});localStorage.setItem(key,JSON.stringify(arr));refresh();};$('fg-load').onchange=e=>{let x=load()[Number(e.target.value)];if(!x)return;rhythmIds=x.rhythmIds;events=x.events;originalMode=x.originalMode;allEighths=!!x.allEighths;$('gs-clef').value=x.clef||'treble';$('gs-instrument').value=x.instrument||'0';render();};$('fg-delete').onclick=()=>{let idx=Number($('fg-load').value);if(!$('fg-load').value)return;let arr=load();arr.splice(idx,1);localStorage.setItem(key,JSON.stringify(arr));refresh();};refresh();}
+async function wavExport(){const bpm=Number($('tempo').value)||80,beat=60/bpm,sr=22050,length=Math.ceil((64*beat+1)*sr),offline=new OfflineAudioContext(1,length,sr);const notes=sustainedEvents();for(let e of notes){let start=(e.bar*4+e.start)*beat,dur=e.dur*beat;let osc=offline.createOscillator(),gain=offline.createGain();osc.type='sine';osc.frequency.value=440*2**((e.m-69)/12);gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(.15*Number($('gs-melvol').value),start+.02);gain.gain.setValueAtTime(.13*Number($('gs-melvol').value),start+Math.max(.021,dur-.04));gain.gain.linearRampToValueAtTime(0,start+dur);osc.connect(gain).connect(offline.destination);osc.start(start);osc.stop(start+dur+.01)}let buf=await offline.startRendering(),f=buf.getChannelData(0),wav=new ArrayBuffer(44+f.length*2),view=new DataView(wav);const str=(off,s)=>{for(let i=0;i<s.length;i++)view.setUint8(off+i,s.charCodeAt(i))};str(0,'RIFF');view.setUint32(4,36+f.length*2,true);str(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);str(36,'data');view.setUint32(40,f.length*2,true);for(let i=0;i<f.length;i++)view.setInt16(44+i*2,Math.max(-32768,Math.min(32767,Math.round(f[i]*32767))),true);download(new Blob([wav],{type:'audio/wav'}),'giant-steps.wav');}
+function setupFavorites(){const key='giant-steps-favorites-v1';const load=()=>JSON.parse(localStorage.getItem(key)||'[]');const refresh=()=>{let select=$('fg-load');select.innerHTML='<option value="">Load Favorite…</option>';load().forEach((x,i)=>{let o=document.createElement('option');o.value=i;o.textContent=x.name;select.appendChild(o)});select.disabled=!load().length;$('fg-delete').disabled=!load().length;};$('fg-auth-status').textContent='Favorites: saved in this browser';$('fg-sign-in').hidden=true;$('fg-sign-out').hidden=true;$('fg-save').disabled=false;$('fg-save').onclick=()=>{let arr=load(),name=prompt('Favorite name','Giant Steps '+(arr.length+1));if(!name)return;arr.push({name,rhythmIds,events,originalMode,allEighths,goodrickMode,clef:$('gs-clef').value,instrument:$('gs-instrument').value});localStorage.setItem(key,JSON.stringify(arr));refresh();};$('fg-load').onchange=e=>{let x=load()[Number(e.target.value)];if(!x)return;rhythmIds=x.rhythmIds;events=x.events;originalMode=x.originalMode;allEighths=!!x.allEighths;goodrickMode=!!x.goodrickMode;$('gs-clef').value=x.clef||'treble';$('gs-instrument').value=x.instrument||'0';render();};$('fg-delete').onclick=()=>{let idx=Number($('fg-load').value);if(!$('fg-load').value)return;let arr=load();arr.splice(idx,1);localStorage.setItem(key,JSON.stringify(arr));refresh();};refresh();}
 // Remember interface preferences, but generate fresh notes on every page load.
 const GS_SETTINGS_KEY='giant-steps-settings-v1';
 const GS_SAVED_CONTROLS=['gs-order','gs-direction','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
 function saveGSSettings(){
  try{
-  const settings={allEighths};
+  const settings={allEighths,goodrickMode};
   for(const id of GS_SAVED_CONTROLS){const el=$(id);if(el)settings[id]=el.type==='checkbox'?el.checked:el.value;}
   localStorage.setItem(GS_SETTINGS_KEY,JSON.stringify(settings));
  }catch(err){console.warn('Could not save Giant Steps settings:',err);}
@@ -544,7 +613,7 @@ function restoreGSSettings(){
    else if([...el.options||[]].length){if([...el.options].some(option=>option.value===String(value)))el.value=String(value);}
    else el.value=String(value);
   }
-  allEighths=!!settings.allEighths;
+  allEighths=!!settings.allEighths;goodrickMode=!!settings.goodrickMode;
   $('tempo-value').textContent=$('tempo').value+' BPM';
  }catch(err){console.warn('Could not restore Giant Steps settings:',err);}
 }
@@ -554,7 +623,7 @@ function watchGSSettings(){
   el.addEventListener('change',saveGSSettings);
   el.addEventListener('input',saveGSSettings);
  }
- for(const id of ['generate','rhythms','gs-all-eighths'])$(id)?.addEventListener('click',()=>queueMicrotask(saveGSSettings));
+ for(const id of ['generate','rhythms','gs-all-eighths','gs-goodrick'])$(id)?.addEventListener('click',()=>queueMicrotask(saveGSSettings));
 }
 window.addEventListener('pagehide',saveGSSettings);
 window.addEventListener('DOMContentLoaded',()=>{$('tempo').addEventListener('input',()=>{$('tempo-value').textContent=$('tempo').value+' BPM';});setupRange();
@@ -565,7 +634,7 @@ window.addEventListener('DOMContentLoaded',()=>{$('tempo').addEventListener('inp
   option.value='half-half';option.textContent='Half Ascending / Half Descending';
   directionSelect.appendChild(option);
  }
- restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;saveGSSettings();generate();};$('rhythms').onclick=()=>{allEighths=false;saveGSSettings();generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;saveGSSettings();generate(false);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
+ restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;goodrickMode=false;saveGSSettings();generate();};$('rhythms').onclick=()=>{allEighths=false;goodrickMode=false;saveGSSettings();generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;goodrickMode=false;saveGSSettings();generate(false);};$('gs-goodrick').onclick=()=>{goodrickMode=true;allEighths=false;saveGSSettings();generate(true);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
 // Spacebar controls Play/Stop, except while editing or using a form control.
 document.addEventListener('keydown',event=>{
  if(event.code!=='Space'||event.repeat||event.altKey||event.ctrlKey||event.metaKey)return;
