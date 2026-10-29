@@ -204,7 +204,10 @@ function abcBar(bar){
  for(const e of ev){
   if(e.start>t+.0001)abc+=' z'+Math.round((e.start-t)*2);
   const chordChange=e.start===0||(Math.abs(e.start-2)<.0001&&D.bars[bar].length===2);
-  const chordLabel=chordChange?'"'+transposeChord(e.chord,instrumentShift()).replace(/maj7/,'△7')+'"':'';
+  const displayedChord=(instrumentShift()===0 && (bar===11 || bar===15))
+    ? (e.start<2?'C#m7':'F#7')
+    : transposeChord(e.chord,instrumentShift());
+  const chordLabel=chordChange?'"'+displayedChord.replace(/maj7/,'△7')+'"':'';
   const duration=Math.round(e.dur*2);
   // Original lead-sheet spelling: G-sharp in measures 6-7, not A-flat.
   let spelledPitch=(instrumentShift()===0&&e.chord==='Bmaj7'&&e.m%12===3)?(e.m>=72?'^d':'^D'):(instrumentShift()===0&&originalMode&&e.m%12===3)?(e.m>=72?'^d':'^D'):(instrumentShift()===0&&originalMode&&[3,9].includes(bar)&&e.start===0&&e.m===71?'=B':abcPitch(e.m));
