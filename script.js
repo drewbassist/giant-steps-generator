@@ -588,7 +588,8 @@ async function play(){
  melodyBus=ctx.createGain();accompBus=ctx.createGain();
  melodyBus.connect(ctx.destination);accompBus.connect(ctx.destination);
  updateMix();
- const start=ctx.currentTime+.12;
+ const countInBeats=$('gs-count-in')?.checked?4:0;
+ const start=ctx.currentTime+.12+countInBeats*beat;
  const schedule=(m,t,d,sound,volume)=>{
  if(token!==playToken)return;
  const sourceMidi=sampleSource(sound,m),audio=melodyBuffers.get(sourceMidi);if(!audio)return;
@@ -599,6 +600,23 @@ async function play(){
  gain.gain.linearRampToValueAtTime(.0001,when+duration);src.connect(gain).connect(melodyBus);
  src.start(when);src.stop(when+duration+.01);sources.push(src);};
  playing=true;startGSScoreFollower(start,beat,token);$('playPause').disabled=false;$('playPause').textContent='Ⅱ Pause';$('transport-status').textContent='Playing · '+chords.length+' accompaniment chords';
+ // Four closed hi-hat clicks before beat 1, independent of the 2-and-4 option.
+ // All sources use the existing transport so Stop cancels the count-in too.
+ if(countInBeats){
+  const length=Math.max(256,Math.round(ctx.sampleRate*.065));
+  const noise=ctx.createBuffer(1,length,ctx.sampleRate),data=noise.getChannelData(0);
+  for(let i=0;i<length;i++)data[i]=(Math.random()*2-1)*Math.exp(-i/(ctx.sampleRate*.012));
+  for(let hit=0;hit<4;hit++){
+   const when=start-(4-hit)*beat;
+   const src=ctx.createBufferSource(),hp=ctx.createBiquadFilter(),gain=ctx.createGain();
+   src.buffer=noise;hp.type='highpass';hp.frequency.value=6500;
+   gain.gain.setValueAtTime(.0001,when);
+   gain.gain.linearRampToValueAtTime(hit===0?.32:.20,when+.002);
+   gain.gain.exponentialRampToValueAtTime(.0001,when+.06);
+   src.connect(hp).connect(gain).connect(ctx.destination);
+   src.start(when);src.stop(when+.065);sources.push(src);
+  }
+ }
  // Closed hi-hat on beats 2 and 4, using short filtered noise bursts.
  if($('gs-hat')?.checked){
   const length=Math.max(256,Math.round(ctx.sampleRate*.065));
@@ -638,7 +656,7 @@ async function play(){
   }
  }
  }
- if(token===playToken)stopTimer=setTimeout(stop,128*beat*1000+300);
+ if(token===playToken)stopTimer=setTimeout(stop,(128+countInBeats)*beat*1000+300);
 }
 function midiExport(){const ppq=480,track=[],ev=[];const add=(tick,bytes)=>ev.push([tick,bytes]);for(let e of sustainedEvents()){let t=Math.round((e.bar*4+e.start)*ppq),end=t+Math.round(e.dur*ppq);add(t,[0x90,e.m,94]);add(end,[0x80,e.m,0]);}ev.sort((a,b)=>a[0]-b[0]||a[1][0]-b[1][0]);const varlen=n=>{let out=[n&127];while(n>>=7)out.unshift((n&127)|128);return out};let prev=0;for(let [t,msg]of ev){track.push(...varlen(t-prev),...msg);prev=t;}track.push(0,0xff,0x2f,0);const u32=n=>[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];const tempo=Math.round(60000000/Number($('tempo').value||80));const meta=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255,0,0xff,0x2f,0];const bytes=[...Array.from('MThd',x=>x.charCodeAt(0)),0,0,0,6,0,1,0,2,1,224,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(meta.length),...meta,...Array.from('MTrk',x=>x.charCodeAt(0)),...u32(track.length),...track];download(new Blob([new Uint8Array(bytes)],{type:'audio/midi'}),'giant-steps.mid');}
 function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
@@ -646,7 +664,7 @@ async function wavExport(){const bpm=Number($('tempo').value)||80,beat=60/bpm,sr
 function setupFavorites(){const key='giant-steps-favorites-v1';const load=()=>JSON.parse(localStorage.getItem(key)||'[]');const refresh=()=>{let select=$('fg-load');select.innerHTML='<option value="">Load Favorite…</option>';load().forEach((x,i)=>{let o=document.createElement('option');o.value=i;o.textContent=x.name;select.appendChild(o)});select.disabled=!load().length;$('fg-delete').disabled=!load().length;};$('fg-auth-status').textContent='Favorites: saved in this browser';$('fg-sign-in').hidden=true;$('fg-sign-out').hidden=true;$('fg-save').disabled=false;$('fg-save').onclick=()=>{let arr=load(),name=prompt('Favorite name','Giant Steps '+(arr.length+1));if(!name)return;arr.push({name,rhythmIds,events,originalMode,allEighths,goodrickMode,clef:$('gs-clef').value,instrument:$('gs-instrument').value});localStorage.setItem(key,JSON.stringify(arr));refresh();};$('fg-load').onchange=e=>{let x=load()[Number(e.target.value)];if(!x)return;rhythmIds=x.rhythmIds;events=x.events;originalMode=x.originalMode;allEighths=!!x.allEighths;goodrickMode=!!x.goodrickMode;$('gs-clef').value=x.clef||'treble';$('gs-instrument').value=x.instrument||'0';render();};$('fg-delete').onclick=()=>{let idx=Number($('fg-load').value);if(!$('fg-load').value)return;let arr=load();arr.splice(idx,1);localStorage.setItem(key,JSON.stringify(arr));refresh();};refresh();}
 // Remember interface preferences, but generate fresh notes on every page load.
 const GS_SETTINGS_KEY='giant-steps-settings-v1';
-const GS_SAVED_CONTROLS=['gs-order','gs-direction','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
+const GS_SAVED_CONTROLS=['gs-count-in','gs-order','gs-direction','gs-instrument','gs-clef','fg-low','fg-high','tempo','gs-melvol','gs-accvol','gs-hat'];
 function saveGSSettings(){
  try{
   const settings={allEighths,goodrickMode};
@@ -685,6 +703,14 @@ window.addEventListener('DOMContentLoaded',()=>{$('tempo').addEventListener('inp
   const option=document.createElement('option');
   option.value='half-half';option.textContent='Half Ascending / Half Descending';
   directionSelect.appendChild(option);
+ }
+ // Create the optional count-in control alongside the existing hi-hat switch.
+ const hatRow=$('gs-hat')?.closest('.gs-style-row');
+ if(hatRow&&!$('gs-count-in')){
+  const label=document.createElement('label');label.className='gs-hat';
+  const box=document.createElement('input');box.type='checkbox';box.id='gs-count-in';box.checked=true;
+  label.append(box,document.createTextNode(' 4-beat count-in'));
+  hatRow.appendChild(label);
  }
  restoreGSSettings();watchGSSettings();$('gs-clef').addEventListener('change',()=>{stop();render();});$('gs-instrument').addEventListener('change',()=>{stop();render();});setupFavorites();for(const id of ['gs-melvol','gs-accvol'])$(id).addEventListener('input',updateMix);$('generate').onclick=()=>{allEighths=false;goodrickMode=false;saveGSSettings();generate();};$('rhythms').onclick=()=>{allEighths=false;goodrickMode=true;saveGSSettings();generate(true);};$('gs-all-eighths').onclick=()=>{allEighths=true;goodrickMode=false;saveGSSettings();generate(false);};$('pentas').onclick=()=>generate(false);$('playPause').onclick=play;
 // Spacebar controls Play/Stop, except while editing or using a form control.
